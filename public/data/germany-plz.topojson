@@ -1,0 +1,53 @@
+{
+  "type": "Topology",
+  "objects": {
+    "postal_codes": {
+      "type": "GeometryCollection",
+      "geometries": [
+        {
+          "type": "Polygon",
+          "properties": { "postal_code": "10115" },
+          "arcs": [[0]]
+        },
+        {
+          "type": "Polygon",
+          "properties": { "postal_code": "20095" },
+          "arcs": [[1]]
+        },
+        {
+          "type": "Polygon",
+          "properties": { "postal_code": "50667" },
+          "arcs": [[2]]
+        },
+        {
+          "type": "Polygon",
+          "properties": { "postal_code": "60311" },
+          "arcs": [[3]]
+        },
+        {
+          "type": "Polygon",
+          "properties": { "postal_code": "80331" },
+          "arcs": [[4]]
+        },
+        {
+          "type": "Polygon",
+          "properties": { "postal_code": "01067" },
+          "arcs": [[5]]
+        }
+      ]
+    }
+  },
+  "arcs": [
+    [[[1335, 8910], [35, 0], [0, -35], [-35, 0], [0, 35]]],
+    [[[883, 9961], [35, 0], [0, -35], [-35, 0], [0, 35]]],
+    [[[3906, 5166], [35, 0], [0, -35], [-35, 0], [0, 35]]],
+    [[[5379, 4360], [35, 0], [0, -35], [-35, 0], [0, 35]]],
+    [[[6387, 1027], [35, 0], [0, -35], [-35, 0], [0, 35]]],
+    [[[10000, 5981], [35, 0], [0, -35], [-35, 0], [0, 35]]]
+  ],
+  "bbox": [6.9603, 48.1372, 13.7381, 53.5534],
+  "transform": {
+    "scale": [0.0006777800000000001, 0.00054162],
+    "translate": [6.9603, 48.1372]
+  }
+}
