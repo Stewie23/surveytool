@@ -130,7 +130,7 @@ export function GermanyPlzMap({ plzData, aggregates, survey }: Props) {
 
     map.on("load", () => {
       if (bounds) {
-        map.zoomTo(map.getZoom() - 10, { duration: 0 });
+        map.zoomTo(map.getZoom() - 20, { duration: 0 });
       }
 
       map.addSource("plz", { type: "geojson", data: initialMapDataRef.current });
