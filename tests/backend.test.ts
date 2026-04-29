@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer, type BuiltServer } from "../src/server/app.js";
 
@@ -120,6 +123,32 @@ describe("backend API", () => {
     expect(accepted.headers["content-type"]).toContain("text/csv");
     expect(accepted.payload).toContain("id,survey_id,postal_code,rating,created_at");
     expect(accepted.payload).toContain(",default,80331,2,");
+  });
+
+  it("serves a precompressed PLZ TopoJSON file behind the plain TopoJSON URL", async () => {
+    const staticDir = fs.mkdtempSync(path.join(os.tmpdir(), "survey-static-"));
+    fs.mkdirSync(path.join(staticDir, "data"), { recursive: true });
+    fs.writeFileSync(path.join(staticDir, "index.html"), "<!doctype html>");
+    fs.writeFileSync(path.join(staticDir, "data", "germany-plz.topojson.br"), "compressed topojson");
+
+    const staticServer = buildServer({
+      config: {
+        sqlitePath: ":memory:",
+        staticDir
+      },
+      postalCodes
+    });
+
+    try {
+      const response = await staticServer.app.inject({ method: "GET", url: "/data/germany-plz.topojson" });
+      expect(response.statusCode).toBe(200);
+      expect(response.headers["content-type"]).toContain("application/json");
+      expect(response.headers["content-encoding"]).toBe("br");
+      expect(response.payload).toBe("compressed topojson");
+    } finally {
+      await staticServer.app.close();
+      fs.rmSync(staticDir, { recursive: true, force: true });
+    }
   });
 
   it("sends an initial SSE aggregate snapshot", async () => {

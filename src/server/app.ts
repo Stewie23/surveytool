@@ -243,16 +243,42 @@ function sendStaticFile(root: string, url: string, reply: FastifyReply) {
   const relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
   const requested = path.resolve(root, relativePath);
   const normalizedRoot = path.resolve(root);
-  const filePath = requested.startsWith(normalizedRoot) && fs.existsSync(requested) && fs.statSync(requested).isFile()
-    ? requested
-    : path.join(normalizedRoot, "index.html");
+  const staticFile = resolveStaticFile(requested, normalizedRoot);
+  const filePath = staticFile.path;
 
   reply.type(contentType(filePath));
+  if (staticFile.contentEncoding) {
+    reply.header("content-encoding", staticFile.contentEncoding);
+    reply.header("vary", "Accept-Encoding");
+  }
   return fs.createReadStream(filePath);
 }
 
+function resolveStaticFile(requested: string, normalizedRoot: string): { path: string; contentEncoding?: string } {
+  if (isWithinRoot(requested, normalizedRoot) && fs.existsSync(requested) && fs.statSync(requested).isFile()) {
+    return { path: requested };
+  }
+
+  const brotliPath = `${requested}.br`;
+  if (
+    path.extname(requested) === ".topojson" &&
+    isWithinRoot(brotliPath, normalizedRoot) &&
+    fs.existsSync(brotliPath) &&
+    fs.statSync(brotliPath).isFile()
+  ) {
+    return { path: brotliPath, contentEncoding: "br" };
+  }
+
+  return { path: path.join(normalizedRoot, "index.html") };
+}
+
+function isWithinRoot(candidate: string, root: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
 function contentType(filePath: string): string {
-  const ext = path.extname(filePath);
+  const ext = path.extname(filePath.replace(/\.br$/i, ""));
   if (ext === ".html") return "text/html; charset=utf-8";
   if (ext === ".js") return "text/javascript; charset=utf-8";
   if (ext === ".css") return "text/css; charset=utf-8";

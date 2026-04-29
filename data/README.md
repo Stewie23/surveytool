@@ -11,4 +11,4 @@ The generated app artifacts are written to:
 - `public/data/germany-plz.topojson`
 - `public/data/postal-codes.json`
 
-The checked-in dataset is a tiny development fixture only. Replace it with a real simplified Germany PLZ dataset before using the app beyond local testing.
+The app can also use a precompressed TopoJSON release asset at `public/data/germany-plz.topojson.br`. The dev and production servers expose it at `/data/germany-plz.topojson` with Brotli content encoding when the plain TopoJSON file is absent.

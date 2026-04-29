@@ -44,7 +44,7 @@ Use `ADMIN_TOKEN` in either an `Authorization: Bearer <token>` header or an `x-a
 
 ## PLZ Data
 
-The checked-in `public/data/germany-plz.topojson` is a tiny development fixture, not a complete Germany dataset. For real use, replace it with a simplified Germany PLZ polygon dataset.
+The app loads PLZ polygons from `public/data/germany-plz.topojson`. If that plain file is not present, both the Vite dev server and the production Fastify server serve `public/data/germany-plz.topojson.br` at the same URL with Brotli content encoding.
 
 Recommended MVP source: [`yetzt/postleitzahlen`](https://github.com/yetzt/postleitzahlen), which publishes German postcode areas in compressed GeoJSON/TopoJSON formats derived from OpenStreetMap.
 
@@ -58,6 +58,8 @@ The script detects `postal_code`, `plz`, `postcode`, or `name`, extracts a 5-dig
 
 - `public/data/germany-plz.topojson`
 - `public/data/postal-codes.json`
+
+When using the upstream `postleitzahlen.topojson.br` release asset directly, place it at `public/data/germany-plz.topojson.br` and keep `public/data/postal-codes.json` in sync with the postcodes in the TopoJSON.
 
 ## Privacy And Map Notes
 
