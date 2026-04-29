@@ -8,7 +8,7 @@ import { type AppConfig, loadConfig } from "./config.js";
 import { type Db, migrate, openDb, seedDefaultSurvey, syncPostalCodes, transaction } from "./db.js";
 import { loadPostalCodes } from "./plzDataset.js";
 import { checkResponseRateLimit } from "./rateLimit.js";
-import { adminSurveySchema, responseSchema, surveyIdParamsSchema } from "./schemas.js";
+import { adminSurveySchema, randomResponsesSchema, responseSchema, surveyIdParamsSchema } from "./schemas.js";
 import { SseHub } from "./sse.js";
 
 type SurveyRow = {
@@ -187,6 +187,62 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
     return survey ? getTotals(db, survey.id) : { totalResponses: 0, postalCodeCount: 0 };
   });
 
+  app.post("/api/admin/clear-results", async (request, reply) => {
+    if (!isAdminRequest(request, config.adminToken)) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
+
+    const survey = getActiveSurvey(db);
+    transaction(db, () => {
+      db.prepare("DELETE FROM responses").run();
+      db.prepare("DELETE FROM postal_code_aggregates").run();
+    });
+
+    if (survey) {
+      broadcastSnapshot(hub, db, survey.id, config.minPublicResponsesPerPlz);
+    }
+
+    return { totalResponses: 0, postalCodeCount: 0 };
+  });
+
+  app.post("/api/admin/random-responses", async (request, reply) => {
+    if (!isAdminRequest(request, config.adminToken)) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
+
+    const parsed = randomResponsesSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "Invalid random response request", details: parsed.error.flatten() });
+    }
+
+    const survey = getActiveSurvey(db);
+    if (!survey) {
+      return reply.code(400).send({ error: "No active survey configured" });
+    }
+
+    const postalCodeList = Array.from(postalCodes);
+    if (postalCodeList.length === 0) {
+      return reply.code(400).send({ error: "No postal codes are available" });
+    }
+
+    transaction(db, () => {
+      const insertResponse = db.prepare(`
+        INSERT INTO responses (id, survey_id, postal_code, rating, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      for (let index = 0; index < parsed.data.count; index += 1) {
+        const postalCode = postalCodeList[randomInt(0, postalCodeList.length - 1)];
+        const rating = randomInt(survey.min_rating, survey.max_rating);
+        const now = new Date().toISOString();
+        insertResponse.run(randomUUID(), survey.id, postalCode, rating, now);
+        upsertAggregate(db, survey.id, postalCode, rating);
+      }
+    });
+
+    broadcastSnapshot(hub, db, survey.id, config.minPublicResponsesPerPlz);
+    return getTotals(db, survey.id);
+  });
+
   if (fs.existsSync(path.join(config.staticDir, "index.html"))) {
     app.get("/*", async (request, reply) => {
       if (request.raw.url?.startsWith("/api/")) {
@@ -220,6 +276,18 @@ function applyThreshold<T extends { count: number; average: number | null; hidde
     average: aggregate.count < min ? null : aggregate.average,
     hidden: aggregate.count < min
   };
+}
+
+function broadcastSnapshot(hub: SseHub, db: Db, surveyId: string, minPublicResponses: number): void {
+  hub.broadcast(surveyId, {
+    type: "aggregate-snapshot",
+    survey_id: surveyId,
+    aggregates: getAggregates(db, surveyId, minPublicResponses)
+  }, "aggregate-snapshot");
+}
+
+function randomInt(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 function toCsv(rows: Array<Record<string, unknown>>, headers: string[]): string {

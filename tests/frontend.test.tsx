@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RatingScale } from "../src/client/src/components/RatingScale";
+import { AdminPage } from "../src/client/src/pages/AdminPage";
 import { SurveyPage } from "../src/client/src/pages/SurveyPage";
 import { colorForAverage } from "../src/client/src/lib/colorScale";
 import { joinAggregates } from "../src/client/src/lib/plzJoin";
@@ -56,6 +57,62 @@ describe("frontend survey controls", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ survey_id: "default", postal_code: "10115", rating: 3 })
+      })
+    );
+  });
+
+  it("clears and fills survey data from the admin page", async () => {
+    localStorage.setItem("admin-token", "admin-token");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({
+          id: "default",
+          title: "Test",
+          question_text: "Rate it",
+          min_rating: -3,
+          max_rating: 3,
+          is_active: true
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({ totalResponses: 0, postalCodeCount: 0 })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({ totalResponses: 12, postalCodeCount: 3 })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({ totalResponses: 0, postalCodeCount: 0 })
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AdminPage />);
+    expect(await screen.findByText("Survey settings")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/random responses/i), { target: { value: "12" } });
+    fireEvent.click(screen.getByRole("button", { name: /fill with random data/i }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Added 12 random responses."));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/random-responses",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ count: 12 })
+      })
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /clear database/i }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Database cleared."));
+    expect(confirm).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/clear-results",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({})
       })
     );
   });

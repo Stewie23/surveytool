@@ -21,3 +21,7 @@ export const responseSchema = z.object({
 export const surveyIdParamsSchema = z.object({
   surveyId: z.string().trim().min(1)
 });
+
+export const randomResponsesSchema = z.object({
+  count: z.number().int().min(1).max(10000)
+});

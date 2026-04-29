@@ -39,6 +39,12 @@ button.active {
   color: #ffffff;
 }
 
+button.danger {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #ffffff;
+}
+
 button:disabled {
   cursor: wait;
   opacity: 0.65;
@@ -206,6 +212,25 @@ textarea {
   padding: 8px 10px;
 }
 
+.admin-tools {
+  border-top: 1px solid #dbe3ee;
+  display: grid;
+  gap: 14px;
+  margin-top: 24px;
+  padding-top: 22px;
+}
+
+.admin-tools h2 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .map-header {
   align-items: end;
   display: flex;
@@ -214,10 +239,17 @@ textarea {
   margin-bottom: 10px;
 }
 
+.map-content {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 144px;
+}
+
 .map-wrap {
   border: 1px solid #cbd5e1;
   border-radius: 8px;
-  height: calc(100vh - 190px);
+  height: calc(100vh - 160px);
   min-height: 620px;
   overflow: hidden;
   position: relative;
@@ -243,10 +275,10 @@ textarea {
 }
 
 .legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 8px;
+  align-content: start;
+  display: grid;
+  gap: 10px;
+  margin-top: 0;
 }
 
 .legend span {
@@ -285,9 +317,18 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .map-content {
+    grid-template-columns: 1fr;
+  }
+
   .map-wrap {
     height: calc(100vh - 250px);
     min-height: 460px;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
   }
 }
 

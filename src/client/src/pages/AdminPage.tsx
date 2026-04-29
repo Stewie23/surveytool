@@ -13,7 +13,9 @@ export function AdminPage() {
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [stats, setStats] = useState<Stats>({ totalResponses: 0, postalCodeCount: 0 });
   const [previewRating, setPreviewRating] = useState<number | null>(null);
+  const [randomCount, setRandomCount] = useState(100);
   const [status, setStatus] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
 
   useEffect(() => {
     getActiveSurvey().then(setSurvey).catch((error) => setStatus(error.message));
@@ -22,7 +24,7 @@ export function AdminPage() {
   useEffect(() => {
     if (!token) return;
     localStorage.setItem("admin-token", token);
-    apiGet<Stats>("/api/admin/stats", token).then(setStats).catch(() => undefined);
+    refreshStats().catch(() => undefined);
   }, [token]);
 
   async function save(event: FormEvent) {
@@ -44,9 +46,47 @@ export function AdminPage() {
     }
   }
 
+  async function refreshStats() {
+    if (!token) return;
+    const latestStats = await apiGet<Stats>("/api/admin/stats", token);
+    setStats(latestStats);
+  }
+
   function exportCsv() {
     if (!token) return;
     window.open(`/api/admin/export.csv?token=${encodeURIComponent(token)}`, "_blank");
+  }
+
+  async function clearResults() {
+    if (!window.confirm("Clear all stored responses and map aggregates? This cannot be undone.")) {
+      return;
+    }
+
+    setStatus("");
+    setIsWorking(true);
+    try {
+      const latestStats = await apiPost<Stats>("/api/admin/clear-results", {}, token);
+      setStats(latestStats);
+      setStatus("Database cleared.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Clearing failed.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function fillRandomData() {
+    setStatus("");
+    setIsWorking(true);
+    try {
+      const latestStats = await apiPost<Stats>("/api/admin/random-responses", { count: randomCount }, token);
+      setStats(latestStats);
+      setStatus(`Added ${randomCount} random responses.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Random data generation failed.");
+    } finally {
+      setIsWorking(false);
+    }
   }
 
   if (!survey) {
@@ -89,6 +129,27 @@ export function AdminPage() {
         <button className="primary" type="submit">Save survey</button>
         <button type="button" onClick={exportCsv}>Export CSV</button>
       </form>
+      <div className="admin-tools" aria-label="Database tools">
+        <h2>Database tools</h2>
+        <label className="field">
+          <span>Random responses</span>
+          <input
+            type="number"
+            min="1"
+            max="10000"
+            value={randomCount}
+            onChange={(event) => setRandomCount(Number(event.target.value))}
+          />
+        </label>
+        <div className="admin-actions">
+          <button type="button" onClick={fillRandomData} disabled={isWorking || !token || randomCount < 1 || randomCount > 10000}>
+            Fill with random data
+          </button>
+          <button className="danger" type="button" onClick={clearResults} disabled={isWorking || !token}>
+            Clear database
+          </button>
+        </div>
+      </div>
       <div className="stats">
         <span>{stats.totalResponses} responses</span>
         <span>{stats.postalCodeCount} PLZ areas</span>

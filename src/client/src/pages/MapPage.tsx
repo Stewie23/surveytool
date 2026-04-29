@@ -77,8 +77,10 @@ export function MapPage() {
           <span>{aggregates.length} PLZ areas</span>
         </div>
       </div>
-      <GermanyPlzMap plzData={plzData} aggregates={aggregates} survey={survey} />
-      <MapLegend />
+      <div className="map-content">
+        <GermanyPlzMap plzData={plzData} aggregates={aggregates} survey={survey} />
+        <MapLegend />
+      </div>
       {status ? <p role="status" className="notice">{status}</p> : null}
     </section>
   );

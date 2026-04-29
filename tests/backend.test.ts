@@ -125,6 +125,51 @@ describe("backend API", () => {
     expect(accepted.payload).toContain(",default,80331,2,");
   });
 
+  it("clears stored responses and aggregates through the admin endpoint", async () => {
+    const survey = await activeSurveyId();
+    await submit({ survey_id: survey, postal_code: "80331", rating: 2 });
+
+    const rejected = await server.app.inject({ method: "POST", url: "/api/admin/clear-results" });
+    expect(rejected.statusCode).toBe(401);
+
+    const accepted = await server.app.inject({
+      method: "POST",
+      url: "/api/admin/clear-results",
+      headers: { "x-admin-token": adminToken }
+    });
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json()).toEqual({ totalResponses: 0, postalCodeCount: 0 });
+
+    const results = await server.app.inject({ method: "GET", url: `/api/results/${survey}` });
+    expect(results.json()).toEqual([]);
+  });
+
+  it("fills the active survey with random response data through the admin endpoint", async () => {
+    const survey = await activeSurveyId();
+
+    const rejected = await server.app.inject({
+      method: "POST",
+      url: "/api/admin/random-responses",
+      headers: { "x-admin-token": adminToken },
+      payload: { count: 0 }
+    });
+    expect(rejected.statusCode).toBe(400);
+
+    const accepted = await server.app.inject({
+      method: "POST",
+      url: "/api/admin/random-responses",
+      headers: { "x-admin-token": adminToken },
+      payload: { count: 25 }
+    });
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json().totalResponses).toBe(25);
+
+    const results = await server.app.inject({ method: "GET", url: `/api/results/${survey}` });
+    const aggregates = results.json() as Array<{ count: number; postal_code: string }>;
+    expect(aggregates.reduce((sum, item) => sum + item.count, 0)).toBe(25);
+    expect(aggregates.every((item) => postalCodes.has(item.postal_code))).toBe(true);
+  });
+
   it("serves a precompressed PLZ TopoJSON file behind the plain TopoJSON URL", async () => {
     const staticDir = fs.mkdtempSync(path.join(os.tmpdir(), "survey-static-"));
     fs.mkdirSync(path.join(staticDir, "data"), { recursive: true });
