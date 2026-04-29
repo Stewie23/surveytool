@@ -1,4 +1,4 @@
-import maplibregl, { type MapMouseEvent } from "maplibre-gl";
+import maplibregl, { type LngLatBoundsLike, type MapMouseEvent } from "maplibre-gl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Aggregate, Survey } from "../../../shared/types";
 import { colorForAverage } from "../lib/colorScale";
@@ -19,15 +19,81 @@ type HoverInfo = {
   hidden: boolean;
 };
 
+function visitCoordinates(value: unknown, extend: (position: GeoJSON.Position) => void) {
+  if (!Array.isArray(value)) return;
+  if (typeof value[0] === "number" && typeof value[1] === "number") {
+    extend(value as GeoJSON.Position);
+    return;
+  }
+  value.forEach((item) => visitCoordinates(item, extend));
+}
+
+function calculateBounds(
+  data: GeoJSON.FeatureCollection<GeoJSON.Geometry, Record<string, unknown>>
+): maplibregl.LngLatBounds | undefined {
+  const bounds = new maplibregl.LngLatBounds();
+  let hasCoordinates = false;
+
+  function extendGeometry(geometry: GeoJSON.Geometry | null) {
+    if (!geometry) return;
+    if (geometry.type === "GeometryCollection") {
+      geometry.geometries.forEach(extendGeometry);
+      return;
+    }
+
+    visitCoordinates(geometry.coordinates, ([lng, lat]) => {
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+      bounds.extend([lng, lat]);
+      hasCoordinates = true;
+    });
+  }
+
+  data.features.forEach((feature) => extendGeometry(feature.geometry));
+  return hasCoordinates ? bounds : undefined;
+}
+
+function expandBounds(bounds: maplibregl.LngLatBounds, paddingRatio = 0.18): LngLatBoundsLike {
+  const west = bounds.getWest();
+  const east = bounds.getEast();
+  const south = bounds.getSouth();
+  const north = bounds.getNorth();
+  const lngPadding = Math.max((east - west) * paddingRatio, 0.25);
+  const latPadding = Math.max((north - south) * paddingRatio, 0.25);
+
+  return [
+    [west - lngPadding, south - latPadding],
+    [east + lngPadding, north + latPadding]
+  ];
+}
+
 export function GermanyPlzMap({ plzData, aggregates, survey }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const joined = useMemo(() => joinAggregates(plzData, aggregates), [plzData, aggregates]);
+  const mapData = useMemo(() => ({
+    ...joined,
+    features: joined.features.map((item) => ({
+      ...item,
+      properties: {
+        ...(item.properties ?? {}),
+        fill: colorForAverage(
+          typeof item.properties?.average === "number" ? item.properties.average : null,
+          survey.min_rating,
+          survey.max_rating,
+          Boolean(item.properties?.hidden)
+        )
+      }
+    }))
+  }), [joined, survey.min_rating, survey.max_rating]);
+  const initialMapDataRef = useRef(mapData);
+  const boundsRef = useRef(calculateBounds(plzData));
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
+    const bounds = boundsRef.current;
+    const maxBounds = bounds ? expandBounds(bounds) : undefined;
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: {
@@ -41,18 +107,33 @@ export function GermanyPlzMap({ plzData, aggregates, survey }: Props) {
           }
         ]
       },
-      center: [10.45, 51.16],
-      zoom: 5,
+      bounds,
+      center: bounds ? undefined : [10.45, 51.16],
+      zoom: bounds ? undefined : 5,
+      fitBoundsOptions: { padding: 36, duration: 0 },
+      maxBounds,
+      bearing: 0,
+      pitch: 0,
+      minPitch: 0,
+      maxPitch: 0,
+      dragRotate: false,
+      pitchWithRotate: false,
+      touchPitch: false,
       attributionControl: false
     });
 
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+    map.touchZoomRotate.disableRotation();
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     map.addControl(new maplibregl.AttributionControl({
       customAttribution: "PLZ polygons derived from OpenStreetMap contributors"
     }));
 
     map.on("load", () => {
-      map.addSource("plz", { type: "geojson", data: joined });
+      if (bounds) {
+        map.zoomTo(map.getZoom() - 10, { duration: 0 });
+      }
+
+      map.addSource("plz", { type: "geojson", data: initialMapDataRef.current });
       map.addLayer({
         id: "plz-fill",
         type: "fill",
@@ -97,24 +178,9 @@ export function GermanyPlzMap({ plzData, aggregates, survey }: Props) {
   }, []);
 
   useEffect(() => {
-    const data = {
-      ...joined,
-      features: joined.features.map((item) => ({
-        ...item,
-        properties: {
-          ...(item.properties ?? {}),
-          fill: colorForAverage(
-            typeof item.properties?.average === "number" ? item.properties.average : null,
-            survey.min_rating,
-            survey.max_rating,
-            Boolean(item.properties?.hidden)
-          )
-        }
-      }))
-    };
     const source = mapRef.current?.getSource("plz") as maplibregl.GeoJSONSource | undefined;
-    source?.setData(data);
-  }, [joined, survey.min_rating, survey.max_rating]);
+    source?.setData(mapData);
+  }, [mapData]);
 
   return (
     <div className="map-wrap">
