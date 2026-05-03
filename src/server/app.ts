@@ -17,7 +17,25 @@ type SurveyRow = {
   question_text: string;
   min_rating: number;
   max_rating: number;
+  rating_labels: string;
+  pages: string;
+  terms_enabled: number;
+  terms_text: string;
   is_active: number;
+};
+
+type SurveyPage = {
+  id: string;
+  title: string;
+  questions: SurveyQuestion[];
+};
+
+type SurveyQuestion = {
+  id: string;
+  text: string;
+  min_rating: number;
+  max_rating: number;
+  rating_labels: Record<string, string>;
 };
 
 export type BuildServerOptions = {
@@ -53,7 +71,7 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
   app.get("/api/survey/active", async (_, reply) => {
     const survey = getActiveSurvey(db);
     if (!survey) return reply.code(404).send({ error: "No active survey configured" });
-    return serializeSurvey(survey);
+    return serializeSurvey(db, survey);
   });
 
   app.post("/api/admin/survey", async (request, reply) => {
@@ -68,33 +86,45 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
 
     const now = new Date().toISOString();
     const id = "active";
+    const firstQuestion = parsed.data.pages[0].questions[0];
+    const pagesJson = JSON.stringify(parsed.data.pages);
     transaction(db, () => {
       if (parsed.data.is_active) {
         db.prepare("UPDATE surveys SET is_active = 0, updated_at = ?").run(now);
       }
       db.prepare(`
-        INSERT INTO surveys (id, title, question_text, min_rating, max_rating, is_active, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO surveys
+          (id, title, question_text, min_rating, max_rating, rating_labels, pages, terms_enabled, terms_text, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           title = excluded.title,
           question_text = excluded.question_text,
           min_rating = excluded.min_rating,
           max_rating = excluded.max_rating,
+          rating_labels = excluded.rating_labels,
+          pages = excluded.pages,
+          terms_enabled = excluded.terms_enabled,
+          terms_text = excluded.terms_text,
           is_active = excluded.is_active,
           updated_at = excluded.updated_at
       `).run(
         id,
         parsed.data.title,
-        parsed.data.question_text,
-        parsed.data.min_rating,
-        parsed.data.max_rating,
+        firstQuestion.text,
+        firstQuestion.min_rating,
+        firstQuestion.max_rating,
+        JSON.stringify(firstQuestion.rating_labels),
+        pagesJson,
+        parsed.data.terms_enabled ? 1 : 0,
+        parsed.data.terms_text,
         parsed.data.is_active ? 1 : 0,
         now,
         now
       );
+      replaceSurveyDefinition(db, id, parsed.data.pages);
     });
 
-    return serializeSurvey(db.prepare("SELECT * FROM surveys WHERE id = ?").get(id) as SurveyRow);
+    return serializeSurvey(db, db.prepare("SELECT * FROM surveys WHERE id = ?").get(id) as SurveyRow);
   });
 
   app.post("/api/responses", async (request, reply) => {
@@ -107,7 +137,7 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
       return reply.code(400).send({ error: "Invalid response", details: parsed.error.flatten() });
     }
 
-    const { survey_id, postal_code, rating } = parsed.data;
+    const { survey_id, postal_code, answers, terms_accepted } = parsed.data;
     if (!postalCodes.has(postal_code)) {
       return reply.code(400).send({ error: "Unknown postal_code" });
     }
@@ -116,28 +146,56 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
     if (!survey || !survey.is_active) {
       return reply.code(400).send({ error: "Survey is not active" });
     }
-    if (rating < survey.min_rating || rating > survey.max_rating) {
-      return reply.code(400).send({ error: "Rating outside configured range" });
+    if (survey.terms_enabled && terms_accepted !== true) {
+      return reply.code(400).send({ error: "Terms must be accepted" });
+    }
+
+    const questions = getQuestions(db, survey);
+    const questionById = new Map(questions.map((question) => [question.id, question]));
+    const answerByQuestionId = new Map<string, number>();
+    for (const answer of answers) {
+      if (answerByQuestionId.has(answer.question_id)) {
+        return reply.code(400).send({ error: "Duplicate answer question_id" });
+      }
+      const question = questionById.get(answer.question_id);
+      if (!question) {
+        return reply.code(400).send({ error: "Unknown question_id" });
+      }
+      if (answer.rating < question.min_rating || answer.rating > question.max_rating) {
+        return reply.code(400).send({ error: "Rating outside configured range" });
+      }
+      answerByQuestionId.set(answer.question_id, answer.rating);
+    }
+    if (answerByQuestionId.size !== questions.length) {
+      return reply.code(400).send({ error: "Response must answer every survey question exactly once" });
     }
 
     const now = new Date().toISOString();
     const responseId = randomUUID();
-    const aggregate = transaction(db, () => {
+    const aggregates = transaction(db, () => {
       db.prepare(`
-        INSERT INTO responses (id, survey_id, postal_code, rating, created_at)
+        INSERT INTO responses (id, survey_id, postal_code, rating, terms_accepted, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(responseId, survey_id, postal_code, answers[0].rating, terms_accepted ? 1 : 0, now);
+
+      const insertAnswer = db.prepare(`
+        INSERT INTO response_answers (submission_id, survey_id, question_id, rating, created_at)
         VALUES (?, ?, ?, ?, ?)
-      `).run(responseId, survey_id, postal_code, rating, now);
-      return upsertAggregate(db, survey_id, postal_code, rating);
+      `);
+      return answers.map((answer) => {
+        insertAnswer.run(responseId, survey_id, answer.question_id, answer.rating, now);
+        return upsertAggregate(db, survey_id, answer.question_id, postal_code, answer.rating);
+      });
     });
 
-    const publicAggregate = applyThreshold(aggregate, config.minPublicResponsesPerPlz);
+    const publicAggregates = aggregates.map((aggregate) => applyThreshold(aggregate, config.minPublicResponsesPerPlz));
     hub.broadcast(survey_id, {
       type: "aggregate-update",
       survey_id,
-      ...publicAggregate
+      aggregates: publicAggregates
     }, "aggregate-update");
 
-    return reply.code(201).send({ id: responseId, aggregate: publicAggregate });
+    return reply.code(201).send({ id: responseId, aggregates: publicAggregates });
   });
 
   app.get("/api/results/:surveyId", async (request, reply) => {
@@ -169,14 +227,22 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
     }
 
     const rows = db.prepare(`
-      SELECT id, survey_id, postal_code, rating, created_at
+      SELECT
+        responses.id AS submission_id,
+        responses.survey_id,
+        responses.postal_code,
+        response_answers.question_id,
+        response_answers.rating,
+        responses.terms_accepted,
+        responses.created_at
       FROM responses
-      ORDER BY created_at
+      JOIN response_answers ON response_answers.submission_id = responses.id
+      ORDER BY responses.created_at, responses.id, response_answers.question_id
     `).all() as Array<Record<string, unknown>>;
 
     reply.header("content-type", "text/csv; charset=utf-8");
     reply.header("content-disposition", "attachment; filename=\"responses.csv\"");
-    return toCsv(rows, ["id", "survey_id", "postal_code", "rating", "created_at"]);
+    return toCsv(rows, ["submission_id", "survey_id", "postal_code", "question_id", "rating", "terms_accepted", "created_at"]);
   });
 
   app.get("/api/admin/stats", async (request, reply) => {
@@ -194,9 +260,13 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
 
     const survey = getActiveSurvey(db);
     transaction(db, () => {
-      db.prepare("DELETE FROM responses").run();
-      db.prepare("DELETE FROM postal_code_aggregates").run();
+      deleteFromTableIfExists(db, "response_answers");
+      deleteFromTableIfExists(db, "responses");
+      deleteFromTableIfExists(db, "postal_code_aggregates");
     });
+    if (config.sqlitePath !== ":memory:") {
+      db.exec("VACUUM");
+    }
 
     if (survey) {
       broadcastSnapshot(hub, db, survey.id, config.minPublicResponsesPerPlz);
@@ -227,15 +297,27 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
 
     transaction(db, () => {
       const insertResponse = db.prepare(`
-        INSERT INTO responses (id, survey_id, postal_code, rating, created_at)
+        INSERT INTO responses (id, survey_id, postal_code, rating, terms_accepted, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      const insertAnswer = db.prepare(`
+        INSERT INTO response_answers (submission_id, survey_id, question_id, rating, created_at)
         VALUES (?, ?, ?, ?, ?)
       `);
+      const questions = getQuestions(db, survey);
       for (let index = 0; index < parsed.data.count; index += 1) {
         const postalCode = postalCodeList[randomInt(0, postalCodeList.length - 1)];
-        const rating = randomInt(survey.min_rating, survey.max_rating);
         const now = new Date().toISOString();
-        insertResponse.run(randomUUID(), survey.id, postalCode, rating, now);
-        upsertAggregate(db, survey.id, postalCode, rating);
+        const responseId = randomUUID();
+        const firstRating = randomInt(questions[0].min_rating, questions[0].max_rating);
+        insertResponse.run(responseId, survey.id, postalCode, firstRating, survey.terms_enabled ? 1 : 0, now);
+        insertAnswer.run(responseId, survey.id, questions[0].id, firstRating, now);
+        upsertAggregate(db, survey.id, questions[0].id, postalCode, firstRating);
+        for (const question of questions.slice(1)) {
+          const rating = randomInt(question.min_rating, question.max_rating);
+          insertAnswer.run(responseId, survey.id, question.id, rating, now);
+          upsertAggregate(db, survey.id, question.id, postalCode, rating);
+        }
       }
     });
 
@@ -259,15 +341,174 @@ function getActiveSurvey(db: Db): SurveyRow | undefined {
   return db.prepare("SELECT * FROM surveys WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 1").get() as SurveyRow | undefined;
 }
 
-function serializeSurvey(survey: SurveyRow) {
+function serializeSurvey(db: Db, survey: SurveyRow) {
+  const pages = getSurveyPages(db, survey);
+  const firstQuestion = pages[0]?.questions[0];
   return {
     id: survey.id,
     title: survey.title,
-    question_text: survey.question_text,
-    min_rating: survey.min_rating,
-    max_rating: survey.max_rating,
+    pages,
+    terms_enabled: Boolean(survey.terms_enabled),
+    terms_text: survey.terms_text,
+    question_text: firstQuestion?.text ?? survey.question_text,
+    min_rating: firstQuestion?.min_rating ?? survey.min_rating,
+    max_rating: firstQuestion?.max_rating ?? survey.max_rating,
+    rating_labels: firstQuestion?.rating_labels ?? parseRatingLabels(survey.rating_labels),
     is_active: Boolean(survey.is_active)
   };
+}
+
+function getQuestions(db: Db, survey: SurveyRow): SurveyQuestion[] {
+  return getSurveyPages(db, survey).flatMap((page) => page.questions);
+}
+
+function getSurveyPages(db: Db, survey: SurveyRow): SurveyPage[] {
+  const normalizedPages = readNormalizedPages(db, survey.id);
+  return normalizedPages.length > 0 ? normalizedPages : parsePages(survey);
+}
+
+function readNormalizedPages(db: Db, surveyId: string): SurveyPage[] {
+  const rows = db.prepare(`
+    SELECT
+      survey_pages.id AS page_id,
+      survey_pages.title AS page_title,
+      survey_pages.position AS page_position,
+      survey_questions.id AS question_id,
+      survey_questions.text AS question_text,
+      survey_questions.min_rating,
+      survey_questions.max_rating,
+      survey_questions.rating_labels,
+      survey_questions.position AS question_position
+    FROM survey_pages
+    JOIN survey_questions
+      ON survey_questions.survey_id = survey_pages.survey_id
+      AND survey_questions.page_id = survey_pages.id
+    WHERE survey_pages.survey_id = ?
+    ORDER BY survey_pages.position, survey_questions.position
+  `).all(surveyId) as Array<{
+    page_id: string;
+    page_title: string;
+    page_position: number;
+    question_id: string;
+    question_text: string;
+    min_rating: number;
+    max_rating: number;
+    rating_labels: string;
+    question_position: number;
+  }>;
+
+  const pages = new Map<string, SurveyPage>();
+  for (const row of rows) {
+    const page = pages.get(row.page_id) ?? {
+      id: row.page_id,
+      title: row.page_title,
+      questions: []
+    };
+    page.questions.push({
+      id: row.question_id,
+      text: row.question_text,
+      min_rating: row.min_rating,
+      max_rating: row.max_rating,
+      rating_labels: parseRatingLabels(row.rating_labels)
+    });
+    pages.set(row.page_id, page);
+  }
+  return Array.from(pages.values());
+}
+
+function replaceSurveyDefinition(db: Db, surveyId: string, pages: SurveyPage[]): void {
+  db.prepare("DELETE FROM survey_questions WHERE survey_id = ?").run(surveyId);
+  db.prepare("DELETE FROM survey_pages WHERE survey_id = ?").run(surveyId);
+
+  const insertPage = db.prepare(`
+    INSERT INTO survey_pages (survey_id, id, title, position)
+    VALUES (?, ?, ?, ?)
+  `);
+  const insertQuestion = db.prepare(`
+    INSERT INTO survey_questions
+      (survey_id, page_id, id, text, min_rating, max_rating, rating_labels, position)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  pages.forEach((page, pageIndex) => {
+    insertPage.run(surveyId, page.id, page.title, pageIndex);
+    page.questions.forEach((question, questionIndex) => {
+      insertQuestion.run(
+        surveyId,
+        page.id,
+        question.id,
+        question.text,
+        question.min_rating,
+        question.max_rating,
+        JSON.stringify(question.rating_labels ?? {}),
+        questionIndex
+      );
+    });
+  });
+}
+
+function parsePages(survey: SurveyRow): SurveyPage[] {
+  try {
+    const parsed = JSON.parse(survey.pages) as unknown;
+    if (!Array.isArray(parsed)) return legacyPages(survey);
+    const pages = parsed.flatMap((page): SurveyPage[] => {
+      if (!page || typeof page !== "object" || Array.isArray(page)) return [];
+      const pageRecord = page as Record<string, unknown>;
+      if (typeof pageRecord.id !== "string" || typeof pageRecord.title !== "string" || !Array.isArray(pageRecord.questions)) {
+        return [];
+      }
+      const questions = pageRecord.questions.flatMap((question): SurveyQuestion[] => {
+        if (!question || typeof question !== "object" || Array.isArray(question)) return [];
+        const questionRecord = question as Record<string, unknown>;
+        if (
+          typeof questionRecord.id !== "string" ||
+          typeof questionRecord.text !== "string" ||
+          typeof questionRecord.min_rating !== "number" ||
+          typeof questionRecord.max_rating !== "number"
+        ) {
+          return [];
+        }
+        return [{
+          id: questionRecord.id,
+          text: questionRecord.text,
+          min_rating: questionRecord.min_rating,
+          max_rating: questionRecord.max_rating,
+          rating_labels: parseRatingLabels(JSON.stringify(questionRecord.rating_labels ?? {}))
+        }];
+      });
+      return questions.length > 0 ? [{ id: pageRecord.id, title: pageRecord.title, questions }] : [];
+    });
+    return pages.length > 0 ? pages : legacyPages(survey);
+  } catch {
+    return legacyPages(survey);
+  }
+}
+
+function legacyPages(survey: SurveyRow): SurveyPage[] {
+  return [{
+    id: `${survey.id}-page-1`,
+    title: survey.title,
+    questions: [{
+      id: `${survey.id}-question-1`,
+      text: survey.question_text,
+      min_rating: survey.min_rating,
+      max_rating: survey.max_rating,
+      rating_labels: parseRatingLabels(survey.rating_labels)
+    }]
+  }];
+}
+
+function parseRatingLabels(value: string | null | undefined): Record<string, string> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([rating, label]) => /^-?\d+$/.test(rating) && typeof label === "string")
+    );
+  } catch {
+    return {};
+  }
 }
 
 function applyThreshold<T extends { count: number; average: number | null; hidden: boolean }>(aggregate: T, min: number): T {
@@ -288,6 +529,13 @@ function broadcastSnapshot(hub: SseHub, db: Db, surveyId: string, minPublicRespo
 
 function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function deleteFromTableIfExists(db: Db, tableName: string): void {
+  const row = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(tableName);
+  if (row) {
+    db.prepare(`DELETE FROM ${tableName}`).run();
+  }
 }
 
 function toCsv(rows: Array<Record<string, unknown>>, headers: string[]): string {

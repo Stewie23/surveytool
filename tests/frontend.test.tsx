@@ -15,8 +15,8 @@ afterEach(() => {
 describe("frontend survey controls", () => {
   it("renders and selects a dynamic rating scale", () => {
     const onChange = vi.fn();
-    render(<RatingScale min={-5} max={5} value={null} onChange={onChange} />);
-    fireEvent.click(screen.getByRole("radio", { name: "+5" }));
+    render(<RatingScale min={-5} max={5} labels={{ "5": "Strongly agree" }} value={null} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("radio", { name: "+5 Strongly agree" }));
     expect(onChange).toHaveBeenCalledWith(5);
   });
 
@@ -36,7 +36,26 @@ describe("frontend survey controls", () => {
           title: "Test",
           question_text: "Rate it",
           min_rating: -3,
-          max_rating: 3
+          max_rating: 3,
+          pages: [
+            {
+              id: "page-1",
+              title: "Basics",
+              questions: [
+                { id: "q-1", text: "Rate it", min_rating: -3, max_rating: 3 },
+                { id: "q-2", text: "Rate more", min_rating: -2, max_rating: 2, rating_labels: { "2": "Agree" } }
+              ]
+            },
+            {
+              id: "page-2",
+              title: "Follow up",
+              questions: [
+                { id: "q-3", text: "Final rating", min_rating: 1, max_rating: 5 }
+              ]
+            }
+          ],
+          terms_enabled: true,
+          terms_text: "Sample terms"
         })
       })
       .mockResolvedValueOnce({
@@ -47,8 +66,17 @@ describe("frontend survey controls", () => {
 
     render(<SurveyPage />);
     expect(await screen.findByText("Rate it")).toBeInTheDocument();
+    expect(screen.getAllByLabelText(/postal code/i)).toHaveLength(1);
     fireEvent.click(screen.getByRole("radio", { name: "+3" }));
+    fireEvent.click(screen.getByRole("radio", { name: "+2 Agree" }));
     fireEvent.change(screen.getByLabelText(/postal code/i), { target: { value: "10115" } });
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    expect(await screen.findByText("Final rating")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/postal code/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "+5" }));
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    expect(await screen.findByText("Sample terms")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText(/i accept the terms/i));
     fireEvent.click(screen.getByRole("button", { name: /submit response/i }));
 
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Thanks"));
@@ -56,12 +84,22 @@ describe("frontend survey controls", () => {
       "/api/responses",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ survey_id: "default", postal_code: "10115", rating: 3 })
+        body: JSON.stringify({
+          survey_id: "default",
+          postal_code: "10115",
+          rating: 3,
+          answers: [
+            { question_id: "q-1", rating: 3 },
+            { question_id: "q-2", rating: 2 },
+            { question_id: "q-3", rating: 5 }
+          ],
+          terms_accepted: true
+        })
       })
     );
   });
 
-  it("clears and fills survey data from the admin page", async () => {
+  it("edits pages, terms, and survey data from the admin page", async () => {
     localStorage.setItem("admin-token", "admin-token");
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const fetchMock = vi
@@ -74,12 +112,55 @@ describe("frontend survey controls", () => {
           question_text: "Rate it",
           min_rating: -3,
           max_rating: 3,
+          rating_labels: { "3": "Strongly agree" },
+          pages: [
+            {
+              id: "page-1",
+              title: "Page 1",
+              questions: [
+                { id: "q-1", text: "Rate it", min_rating: -3, max_rating: 3, rating_labels: { "3": "Strongly agree" } }
+              ]
+            }
+          ],
+          terms_enabled: false,
+          terms_text: "",
           is_active: true
         })
       })
       .mockResolvedValueOnce({
         ok: true,
         text: async () => JSON.stringify({ totalResponses: 0, postalCodeCount: 0 })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({
+          id: "default",
+          title: "Test",
+          question_text: "Rate it",
+          min_rating: -3,
+          max_rating: 3,
+          rating_labels: { "3": "Agree strongly" },
+          pages: [
+            {
+              id: "page-1",
+              title: "Intro",
+              questions: [
+                { id: "q-1", text: "Rate it", min_rating: -3, max_rating: 3, rating_labels: { "3": "Agree strongly" } },
+                { id: "question-new", text: "New rating question", min_rating: -3, max_rating: 3, rating_labels: {} }
+              ]
+            },
+            {
+              id: "page-new",
+              title: "Page 2",
+              questions: [
+                { id: "q-new", text: "New rating question", min_rating: -3, max_rating: 3, rating_labels: {} }
+              ]
+            }
+          ],
+          terms_enabled: true,
+          terms_text: "Terms go here",
+          is_active: true
+        })
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -94,6 +175,35 @@ describe("frontend survey controls", () => {
     render(<AdminPage />);
     expect(await screen.findByText("Survey settings")).toBeInTheDocument();
 
+    fireEvent.change(screen.getByLabelText(/page title/i), { target: { value: "Intro" } });
+    fireEvent.change(screen.getByPlaceholderText("Strongly agree"), { target: { value: "Agree strongly" } });
+    fireEvent.click(screen.getByRole("button", { name: /add question/i }));
+    fireEvent.click(screen.getByRole("button", { name: /add page/i }));
+    fireEvent.click(screen.getByLabelText(/enable terms/i));
+    fireEvent.change(screen.getByLabelText(/terms text/i), { target: { value: "Terms go here" } });
+    fireEvent.click(screen.getByRole("button", { name: /save survey/i }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Survey saved."));
+    const saveCall = fetchMock.mock.calls.find(([path]) => path === "/api/admin/survey");
+    const saveBody = JSON.parse(saveCall?.[1]?.body as string);
+    expect(saveBody).toMatchObject({
+      title: "Test",
+      question_text: "Rate it",
+      min_rating: -3,
+      max_rating: 3,
+      rating_labels: { "3": "Agree strongly" },
+      terms_enabled: true,
+      terms_text: "Terms go here",
+      is_active: true
+    });
+    expect(saveBody.pages).toHaveLength(2);
+    expect(saveBody.pages[0]).toMatchObject({
+      title: "Intro",
+      questions: [
+        expect.objectContaining({ text: "Rate it", rating_labels: { "3": "Agree strongly" } }),
+        expect.objectContaining({ text: "New rating question" })
+      ]
+    });
+
     fireEvent.change(screen.getByLabelText(/random responses/i), { target: { value: "12" } });
     fireEvent.click(screen.getByRole("button", { name: /fill with random data/i }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Added 12 random responses."));
@@ -105,8 +215,8 @@ describe("frontend survey controls", () => {
       })
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /clear database/i }));
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Database cleared."));
+    fireEvent.click(screen.getByRole("button", { name: /clear responses/i }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Responses cleared."));
     expect(confirm).toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/admin/clear-results",
@@ -115,6 +225,103 @@ describe("frontend survey controls", () => {
         body: JSON.stringify({})
       })
     );
+  });
+
+  it("saves an added admin question without requiring another editor action", async () => {
+    localStorage.setItem("admin-token", "admin-token");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({
+          id: "default",
+          title: "Test",
+          question_text: "Rate it",
+          min_rating: -3,
+          max_rating: 3,
+          rating_labels: {},
+          pages: [{
+            id: "page-1",
+            title: "Page 1",
+            questions: [{ id: "q-1", text: "Rate it", min_rating: -3, max_rating: 3, rating_labels: {} }]
+          }],
+          terms_enabled: false,
+          terms_text: "",
+          is_active: true
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({ totalResponses: 0, postalCodeCount: 0 })
+      })
+      .mockImplementationOnce(async (_path, options) => ({
+        ok: true,
+        text: async () => options?.body as string
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AdminPage />);
+    expect(await screen.findByText("Survey settings")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /add question/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save survey/i }));
+
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Survey saved."));
+    const saveCall = fetchMock.mock.calls.find(([path]) => path === "/api/admin/survey");
+    const saveBody = JSON.parse(saveCall?.[1]?.body as string);
+    expect(saveBody.pages[0].questions).toHaveLength(2);
+    expect(saveBody.pages[0].questions[1]).toMatchObject({ text: "New rating question" });
+  });
+
+  it("keeps local questions visible when a stale save response drops pages", async () => {
+    localStorage.setItem("admin-token", "admin-token");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({
+          id: "default",
+          title: "Test",
+          question_text: "Rate it",
+          min_rating: -3,
+          max_rating: 3,
+          rating_labels: {},
+          pages: [{
+            id: "page-1",
+            title: "Page 1",
+            questions: [{ id: "q-1", text: "Rate it", min_rating: -3, max_rating: 3, rating_labels: {} }]
+          }],
+          terms_enabled: false,
+          terms_text: "",
+          is_active: true
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({ totalResponses: 0, postalCodeCount: 0 })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({
+          id: "active",
+          title: "Test",
+          question_text: "Rate it",
+          min_rating: -3,
+          max_rating: 3,
+          rating_labels: {},
+          is_active: true
+        })
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AdminPage />);
+    expect(await screen.findByText("Survey settings")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /add question/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save survey/i }));
+
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Frontend/backend mismatch"));
+    expect(screen.getByText("Question 2")).toBeInTheDocument();
   });
 });
 

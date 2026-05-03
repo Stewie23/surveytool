@@ -1,4 +1,28 @@
-import type { Aggregate, Survey } from "../../../shared/types";
+import type { Aggregate, QuestionAggregates, Survey, SurveyPage, SurveyQuestion } from "../../../shared/types";
+
+export type { SurveyQuestion };
+
+export type SurveyPageConfig = SurveyPage;
+
+export type PagedSurvey = Survey & {
+  pages?: SurveyPageConfig[];
+  terms_enabled?: boolean;
+  terms_text?: string;
+};
+
+export type QuestionAggregate = Aggregate & {
+  question_id?: string;
+};
+
+export type GroupedAggregate = {
+  question_id: string;
+  question_text: string;
+  min_rating?: number;
+  max_rating?: number;
+  aggregates: QuestionAggregate[];
+};
+
+export type AggregateResponse = QuestionAggregates[] | QuestionAggregate[] | { questions: GroupedAggregate[] };
 
 export async function apiGet<T>(path: string, token?: string): Promise<T> {
   const response = await fetch(path, {
@@ -23,8 +47,8 @@ export async function getActiveSurvey(): Promise<Survey> {
   return apiGet<Survey>("/api/survey/active");
 }
 
-export async function getAggregates(surveyId: string): Promise<Aggregate[]> {
-  return apiGet<Aggregate[]>(`/api/results/${encodeURIComponent(surveyId)}`);
+export async function getAggregates(surveyId: string): Promise<AggregateResponse> {
+  return apiGet<AggregateResponse>(`/api/results/${encodeURIComponent(surveyId)}`);
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
