@@ -2,7 +2,7 @@ import maplibregl, { type LngLatBoundsLike, type MapMouseEvent } from "maplibre-
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Aggregate, Survey } from "../../../shared/types";
 import { colorForAverage } from "../lib/colorScale";
-import { joinAggregates } from "../lib/plzJoin";
+import { joinAggregates, plzLevelForZoom, toFeatureCollection, type PlzLevel } from "../lib/plzJoin";
 
 type Props = {
   plzData: GeoJSON.FeatureCollection<GeoJSON.Geometry, Record<string, unknown>>;
@@ -17,6 +17,14 @@ type HoverInfo = {
   count: number;
   average: number | null;
   hidden: boolean;
+};
+
+const sourcePathByLevel: Record<PlzLevel, string> = {
+  1: "/data/germany-plz-1.topojson",
+  2: "/data/germany-plz-2.topojson",
+  3: "/data/germany-plz-3.topojson",
+  4: "/data/germany-plz-4.topojson",
+  5: "/data/germany-plz.topojson"
 };
 
 function visitCoordinates(value: unknown, extend: (position: GeoJSON.Position) => void) {
@@ -69,8 +77,12 @@ function expandBounds(bounds: maplibregl.LngLatBounds, paddingRatio = 0.18): Lng
 export function GermanyPlzMap({ plzData, aggregates, survey }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const shapeCacheRef = useRef(new Map<PlzLevel, GeoJSON.FeatureCollection<GeoJSON.Geometry, Record<string, unknown>>>([[1, plzData]]));
+  const loadRequestRef = useRef(0);
+  const [activeLevel, setActiveLevel] = useState<PlzLevel>(1);
+  const [activePlzData, setActivePlzData] = useState(plzData);
   const [hover, setHover] = useState<HoverInfo | null>(null);
-  const joined = useMemo(() => joinAggregates(plzData, aggregates), [plzData, aggregates]);
+  const joined = useMemo(() => joinAggregates(activePlzData, aggregates, activeLevel), [activePlzData, activeLevel, aggregates]);
   const mapData = useMemo(() => ({
     ...joined,
     features: joined.features.map((item) => ({
@@ -88,6 +100,30 @@ export function GermanyPlzMap({ plzData, aggregates, survey }: Props) {
   }), [joined, survey.min_rating, survey.max_rating]);
   const initialMapDataRef = useRef(mapData);
   const boundsRef = useRef(calculateBounds(plzData));
+
+  async function loadPlzLevel(level: PlzLevel): Promise<void> {
+    const requestId = ++loadRequestRef.current;
+    const cached = shapeCacheRef.current.get(level);
+    if (cached) {
+      if (requestId === loadRequestRef.current) {
+        setActiveLevel(level);
+        setActivePlzData(cached);
+      }
+      return;
+    }
+
+    const response = await fetch(sourcePathByLevel[level]);
+    if (!response.ok) {
+      throw new Error(`Could not load PLZ${level} shapes`);
+    }
+
+    const collection = toFeatureCollection(await response.json());
+    shapeCacheRef.current.set(level, collection);
+    if (requestId === loadRequestRef.current) {
+      setActiveLevel(level);
+      setActivePlzData(collection);
+    }
+  }
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -155,6 +191,10 @@ export function GermanyPlzMap({ plzData, aggregates, survey }: Props) {
       map.on("mousemove", "plz-fill", handleMove);
       map.on("mouseleave", "plz-fill", () => setHover(null));
     });
+    map.on("zoomend", () => {
+      const nextLevel = plzLevelForZoom(map.getZoom());
+      void loadPlzLevel(nextLevel).catch((error) => console.error(error));
+    });
 
     function handleMove(event: MapMouseEvent) {
       const item = event.features?.[0];
@@ -180,6 +220,7 @@ export function GermanyPlzMap({ plzData, aggregates, survey }: Props) {
   useEffect(() => {
     const source = mapRef.current?.getSource("plz") as maplibregl.GeoJSONSource | undefined;
     source?.setData(mapData);
+    setHover(null);
   }, [mapData]);
 
   return (

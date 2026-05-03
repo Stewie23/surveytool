@@ -4,7 +4,7 @@ import { RatingScale } from "../src/client/src/components/RatingScale";
 import { AdminPage } from "../src/client/src/pages/AdminPage";
 import { SurveyPage } from "../src/client/src/pages/SurveyPage";
 import { colorForAverage } from "../src/client/src/lib/colorScale";
-import { joinAggregates } from "../src/client/src/lib/plzJoin";
+import { aggregateToPlzLevel, joinAggregates, plzLevelForZoom } from "../src/client/src/lib/plzJoin";
 import { isValidPostalCode } from "../src/client/src/lib/validation";
 
 afterEach(() => {
@@ -344,11 +344,69 @@ describe("frontend map helpers", () => {
     };
 
     const joined = joinAggregates(collection, [
-      { postal_code: "10115", count: 12, average: 1.8, sum: 22 }
+      { question_id: "q-1", postal_code: "10115", count: 12, average: 1.8, sum: 22 }
     ]);
 
     expect(joined.features[0].properties).toMatchObject({ postal_code: "10115", count: 12, average: 1.8 });
     expect(joined.features[1].properties).toMatchObject({ postal_code: "80331", count: 0, average: null });
+  });
+
+  it("aggregates 5-digit rows to PLZ prefixes from sum and count", () => {
+    const aggregates = aggregateToPlzLevel([
+      { question_id: "q-1", postal_code: "10115", count: 2, average: 5, sum: 10 },
+      { question_id: "q-1", postal_code: "10117", count: 8, average: 1, sum: 8, hidden: true },
+      { question_id: "q-1", postal_code: "80331", count: 4, average: -1, sum: -4 }
+    ], 2);
+
+    expect(aggregates).toEqual([
+      { question_id: "q-1", postal_code: "10", count: 10, average: 1.8, sum: 18, hidden: false },
+      { question_id: "q-1", postal_code: "80", count: 4, average: -1, sum: -4, hidden: false }
+    ]);
+  });
+
+  it("keeps exact PLZ5 hidden rows unchanged", () => {
+    const aggregates = aggregateToPlzLevel([
+      { question_id: "q-1", postal_code: "10117", count: 1, average: null, sum: 5, hidden: true }
+    ], 5);
+
+    expect(aggregates).toEqual([
+      { question_id: "q-1", postal_code: "10117", count: 1, average: null, sum: 5, hidden: true }
+    ]);
+  });
+
+  it("joins aggregate rows onto PLZ prefix features", () => {
+    const collection: GeoJSON.FeatureCollection = {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [13.4, 52.5] },
+          properties: { plz: "10" }
+        },
+        {
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [11.6, 48.1] },
+          properties: { postal_code: "80331" }
+        }
+      ]
+    };
+
+    const joined = joinAggregates(collection, [
+      { question_id: "q-1", postal_code: "10115", count: 2, average: 3, sum: 6 },
+      { question_id: "q-1", postal_code: "10117", count: 3, average: 1, sum: 3 },
+      { question_id: "q-1", postal_code: "80331", count: 4, average: -1, sum: -4 }
+    ], 2);
+
+    expect(joined.features[0].properties).toMatchObject({ postal_code: "10", count: 5, average: 1.8, sum: 9 });
+    expect(joined.features[1].properties).toMatchObject({ postal_code: "80", count: 4, average: -1, sum: -4 });
+  });
+
+  it("selects coarser PLZ levels for lower zooms", () => {
+    expect(plzLevelForZoom(4.99)).toBe(1);
+    expect(plzLevelForZoom(5)).toBe(2);
+    expect(plzLevelForZoom(6.5)).toBe(3);
+    expect(plzLevelForZoom(8)).toBe(4);
+    expect(plzLevelForZoom(9.5)).toBe(5);
   });
 
   it("adapts color scale outside the default -3 to +3 range", () => {

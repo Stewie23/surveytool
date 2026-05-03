@@ -48,18 +48,19 @@ The app loads PLZ polygons from `public/data/germany-plz.topojson`. If that plai
 
 Recommended MVP source: [`yetzt/postleitzahlen`](https://github.com/yetzt/postleitzahlen), which publishes German postcode areas in compressed GeoJSON/TopoJSON formats derived from OpenStreetMap.
 
-To normalize a GeoJSON source file:
+To normalize and quantize a GeoJSON or TopoJSON source file:
 
 ```bash
 npm run prepare:plz -- data/source-plz.geojson
 ```
 
-The script detects `postal_code`, `plz`, `postcode`, or `name`, extracts a 5-digit PLZ, rewrites each feature to `properties.postal_code`, and generates:
+The script detects `postal_code`, `plz`, `postcode`, or `name`, extracts a 5-digit PLZ, rewrites each feature to `properties.postal_code`, quantizes the topology, and generates:
 
 - `public/data/germany-plz.topojson`
+- `public/data/germany-plz.topojson.br`
 - `public/data/postal-codes.json`
 
-When using the upstream `postleitzahlen.topojson.br` release asset directly, place it at `public/data/germany-plz.topojson.br` and keep `public/data/postal-codes.json` in sync with the postcodes in the TopoJSON.
+When `data/source-plz.geojson` is absent, the script can bootstrap from `public/data/germany-plz.topojson.br`.
 
 ## Privacy And Map Notes
 

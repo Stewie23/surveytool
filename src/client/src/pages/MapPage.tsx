@@ -90,7 +90,7 @@ export function MapPage() {
       setSurvey(activeSurvey);
       setSelectedQuestionId(activeQuestions[0]?.id ?? "");
       const [plz, rows] = await Promise.all([
-        fetch("/data/germany-plz.topojson").then((response) => response.json()).then(toFeatureCollection),
+        fetch("/data/germany-plz-1.topojson").then((response) => response.json()).then(toFeatureCollection),
         getAggregates(activeSurvey.id)
       ]);
       setPlzData(plz);
