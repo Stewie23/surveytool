@@ -4,6 +4,7 @@ export type AppConfig = {
   port: number;
   sqlitePath: string;
   adminToken: string;
+  adminPassword: string;
   minPublicResponsesPerPlz: number;
   responseRateLimitWindow: number;
   responseRateLimitMax: number;
@@ -20,10 +21,12 @@ function numberFromEnv(name: string, fallback: number): number {
 }
 
 export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
+  const adminToken = process.env.ADMIN_TOKEN ?? "dev-admin-token";
   return {
     port: numberFromEnv("PORT", 3000),
     sqlitePath: process.env.SQLITE_PATH ?? "survey.sqlite",
-    adminToken: process.env.ADMIN_TOKEN ?? "dev-admin-token",
+    adminToken,
+    adminPassword: process.env.ADMIN_PASSWORD || adminToken,
     publicBaseUrl: process.env.PUBLIC_BASE_URL,
     responseRateLimitWindow: numberFromEnv("RESPONSE_RATE_LIMIT_WINDOW", 60_000),
     responseRateLimitMax: numberFromEnv("RESPONSE_RATE_LIMIT_MAX", 20),

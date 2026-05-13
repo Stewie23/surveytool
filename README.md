@@ -34,13 +34,14 @@ Environment variables:
 
 - `PORT`, default `3000`
 - `SQLITE_PATH`, default `survey.sqlite`
+- `ADMIN_PASSWORD`, falls back to `ADMIN_TOKEN` if unset
 - `ADMIN_TOKEN`, default `dev-admin-token`
 - `PUBLIC_BASE_URL`, optional
 - `RESPONSE_RATE_LIMIT_WINDOW`, default `60000`
 - `RESPONSE_RATE_LIMIT_MAX`, default `20`
 - `MIN_PUBLIC_RESPONSES_PER_PLZ`, default `1`
 
-Use `ADMIN_TOKEN` in either an `Authorization: Bearer <token>` header or an `x-admin-token` header for admin endpoints.
+Set `ADMIN_PASSWORD` in a local `.env` file or server environment to protect the admin page with a browser-session login. `.env` is ignored by git. `ADMIN_TOKEN` is retained as a legacy compatibility token for admin endpoints via either an `Authorization: Bearer <token>` header or an `x-admin-token` header.
 
 ## PLZ Data
 

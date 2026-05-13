@@ -99,11 +99,82 @@ describe("frontend survey controls", () => {
     );
   });
 
-  it("edits pages, terms, and survey data from the admin page", async () => {
-    localStorage.setItem("admin-token", "admin-token");
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  it("requires an admin password before showing the admin editor", async () => {
     const fetchMock = vi
       .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({ authenticated: false })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({ authenticated: true })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({
+          id: "default",
+          title: "Test",
+          question_text: "Rate it",
+          min_rating: -3,
+          max_rating: 3,
+          rating_labels: {},
+          pages: [{
+            id: "page-1",
+            title: "Page 1",
+            questions: [{ id: "q-1", text: "Rate it", min_rating: -3, max_rating: 3, rating_labels: {} }]
+          }],
+          terms_enabled: false,
+          terms_text: "",
+          is_active: true
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({ totalResponses: 0, postalCodeCount: 0 })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({ authenticated: false })
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AdminPage />);
+    expect(await screen.findByText("Admin login")).toBeInTheDocument();
+    expect(screen.queryByText("Survey settings")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: "secret" } });
+    fireEvent.click(screen.getByRole("button", { name: /log in/i }));
+
+    expect(await screen.findByText("Survey settings")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/login",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ password: "secret" })
+      })
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /log out/i }));
+    expect(await screen.findByText("Admin login")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/logout",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({})
+      })
+    );
+  });
+
+  it("edits pages, terms, and survey data from the admin page", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({ authenticated: true })
+      })
       .mockResolvedValueOnce({
         ok: true,
         text: async () => JSON.stringify({
@@ -227,12 +298,18 @@ describe("frontend survey controls", () => {
         body: JSON.stringify({})
       })
     );
+
+    fireEvent.click(screen.getByRole("button", { name: /export csv/i }));
+    expect(open).toHaveBeenCalledWith("/api/admin/export.csv", "_blank");
   });
 
   it("saves an added admin question without requiring another editor action", async () => {
-    localStorage.setItem("admin-token", "admin-token");
     const fetchMock = vi
       .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({ authenticated: true })
+      })
       .mockResolvedValueOnce({
         ok: true,
         text: async () => JSON.stringify({
@@ -276,9 +353,12 @@ describe("frontend survey controls", () => {
   });
 
   it("keeps local questions visible when a stale save response drops pages", async () => {
-    localStorage.setItem("admin-token", "admin-token");
     const fetchMock = vi
       .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({ authenticated: true })
+      })
       .mockResolvedValueOnce({
         ok: true,
         text: async () => JSON.stringify({

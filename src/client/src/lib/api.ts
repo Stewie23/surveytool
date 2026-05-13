@@ -27,6 +27,7 @@ export type AggregateResponse = QuestionAggregates[] | QuestionAggregate[] | { q
 
 export async function apiGet<T>(path: string, token?: string): Promise<T> {
   const response = await fetch(path, {
+    credentials: "same-origin",
     headers: token ? { "x-admin-token": token } : undefined
   });
   return parseResponse<T>(response);
@@ -35,6 +36,7 @@ export async function apiGet<T>(path: string, token?: string): Promise<T> {
 export async function apiPost<T>(path: string, body: unknown, token?: string): Promise<T> {
   const response = await fetch(path, {
     method: "POST",
+    credentials: "same-origin",
     headers: {
       "content-type": "application/json",
       ...(token ? { "x-admin-token": token } : {})

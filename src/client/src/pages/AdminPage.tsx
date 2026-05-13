@@ -8,6 +8,10 @@ type Stats = {
   postalCodeCount: number;
 };
 
+type AdminSession = {
+  authenticated: boolean;
+};
+
 function newId(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -109,7 +113,8 @@ function countQuestions(pages: SurveyPageConfig[] | undefined) {
 }
 
 export function AdminPage() {
-  const [token, setToken] = useState(() => localStorage.getItem("admin-token") ?? "");
+  const [authStatus, setAuthStatus] = useState<"checking" | "login" | "authenticated">("checking");
+  const [password, setPassword] = useState("");
   const [survey, setSurvey] = useState<PagedSurvey | null>(null);
   const [selectedPageId, setSelectedPageId] = useState("");
   const [previewRatings, setPreviewRatings] = useState<Record<string, number | null>>({});
@@ -119,23 +124,21 @@ export function AdminPage() {
   const [isWorking, setIsWorking] = useState(false);
 
   useEffect(() => {
-    getActiveSurvey()
-      .then((loaded) => {
-        const normalized = normalizeSurvey(loaded as PagedSurvey);
-        setSurvey(normalized);
-        setSelectedPageId(normalized.pages?.[0]?.id ?? "");
-        if (!(loaded as PagedSurvey).pages?.length) {
-          setStatus("Frontend/backend mismatch: the backend returned the old single-question survey shape. Restart all dev processes before editing multiple questions.");
+    apiGet<AdminSession>("/api/admin/session")
+      .then((session) => {
+        if (session.authenticated) {
+          setAuthStatus("authenticated");
+        } else {
+          setAuthStatus("login");
         }
       })
-      .catch((error) => setStatus(error.message));
+      .catch(() => setAuthStatus("login"));
   }, []);
 
   useEffect(() => {
-    if (!token) return;
-    localStorage.setItem("admin-token", token);
-    refreshStats().catch(() => undefined);
-  }, [token]);
+    if (authStatus !== "authenticated") return;
+    loadAdminData().catch((error) => setStatus(error instanceof Error ? error.message : "Loading admin failed."));
+  }, [authStatus]);
 
   const selectedPage = useMemo(
     () => survey?.pages?.find((page) => page.id === selectedPageId) ?? survey?.pages?.[0],
@@ -178,7 +181,7 @@ export function AdminPage() {
       console.log("Payload", payload);
       console.groupEnd();
 
-      const saved = await apiPost<PagedSurvey>("/api/admin/survey", payload, token);
+      const saved = await apiPost<PagedSurvey>("/api/admin/survey", payload);
       const normalized = normalizeSurvey(saved);
       console.groupCollapsed("[Survey Admin] Survey saved");
       console.log("Response summary", {
@@ -207,15 +210,55 @@ export function AdminPage() {
     }
   }
 
+  async function login(event: FormEvent) {
+    event.preventDefault();
+    setStatus("");
+    setIsWorking(true);
+    try {
+      await apiPost<AdminSession>("/api/admin/login", { password });
+      setPassword("");
+      setAuthStatus("authenticated");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Login failed.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function logout() {
+    setStatus("");
+    setIsWorking(true);
+    try {
+      await apiPost<AdminSession>("/api/admin/logout", {});
+      setSurvey(null);
+      setSelectedPageId("");
+      setStats({ totalResponses: 0, postalCodeCount: 0 });
+      setAuthStatus("login");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Logout failed.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function loadAdminData() {
+    const loaded = await getActiveSurvey();
+    const normalized = normalizeSurvey(loaded as PagedSurvey);
+    setSurvey(normalized);
+    setSelectedPageId(normalized.pages?.[0]?.id ?? "");
+    if (!(loaded as PagedSurvey).pages?.length) {
+      setStatus("Frontend/backend mismatch: the backend returned the old single-question survey shape. Restart all dev processes before editing multiple questions.");
+    }
+    await refreshStats();
+  }
+
   async function refreshStats() {
-    if (!token) return;
-    const latestStats = await apiGet<Stats>("/api/admin/stats", token);
+    const latestStats = await apiGet<Stats>("/api/admin/stats");
     setStats(latestStats);
   }
 
   function exportCsv() {
-    if (!token) return;
-    window.open(`/api/admin/export.csv?token=${encodeURIComponent(token)}`, "_blank");
+    window.open("/api/admin/export.csv", "_blank");
   }
 
   async function clearResults() {
@@ -224,7 +267,7 @@ export function AdminPage() {
     setStatus("");
     setIsWorking(true);
     try {
-      const latestStats = await apiPost<Stats>("/api/admin/clear-results", {}, token);
+      const latestStats = await apiPost<Stats>("/api/admin/clear-results", {});
       setStats(latestStats);
       setStatus("Responses cleared.");
     } catch (error) {
@@ -238,7 +281,7 @@ export function AdminPage() {
     setStatus("");
     setIsWorking(true);
     try {
-      const latestStats = await apiPost<Stats>("/api/admin/random-responses", { count: randomCount }, token);
+      const latestStats = await apiPost<Stats>("/api/admin/random-responses", { count: randomCount });
       setStats(latestStats);
       setStatus(`Added ${randomCount} random responses.`);
     } catch (error) {
@@ -303,6 +346,34 @@ export function AdminPage() {
     }) : current);
   }
 
+  if (authStatus === "checking") {
+    return <section className="panel">Loading admin...</section>;
+  }
+
+  if (authStatus === "login") {
+    return (
+      <section className="panel admin-panel">
+        <p className="eyebrow">Admin</p>
+        <h1>Admin login</h1>
+        <form onSubmit={login} className="admin-grid">
+          <label className="field">
+            <span>Password</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+            />
+          </label>
+          <button className="primary" type="submit" disabled={isWorking || !password}>
+            Log in
+          </button>
+        </form>
+        {status ? <p role="status">{status}</p> : null}
+      </section>
+    );
+  }
+
   if (!survey) {
     return <section className="panel">Loading admin...</section>;
   }
@@ -312,10 +383,6 @@ export function AdminPage() {
       <p className="eyebrow">Admin</p>
       <h1>Survey settings</h1>
       <form onSubmit={save} className="admin-grid">
-        <label className="field">
-          <span>Admin token</span>
-          <input value={token} onChange={(event) => setToken(event.target.value)} />
-        </label>
         <label className="field">
           <span>Title</span>
           <input value={survey.title} onChange={(event) => {
@@ -499,6 +566,7 @@ export function AdminPage() {
 
         <button className="primary" type="submit">Save survey</button>
         <button type="button" onClick={exportCsv}>Export CSV</button>
+        <button type="button" onClick={logout} disabled={isWorking}>Log out</button>
       </form>
       <div className="admin-tools" aria-label="Database tools">
         <h2>Database tools</h2>
@@ -513,10 +581,10 @@ export function AdminPage() {
           />
         </label>
         <div className="admin-actions">
-          <button type="button" onClick={fillRandomData} disabled={isWorking || !token || randomCount < 1 || randomCount > 10000}>
+          <button type="button" onClick={fillRandomData} disabled={isWorking || randomCount < 1 || randomCount > 10000}>
             Fill with random data
           </button>
-          <button className="danger" type="button" onClick={clearResults} disabled={isWorking || !token}>
+          <button className="danger" type="button" onClick={clearResults} disabled={isWorking}>
             Clear responses
           </button>
         </div>

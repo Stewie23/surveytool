@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer, type BuiltServer } from "../src/server/app.js";
 
 const adminToken = "test-admin-token";
+const adminPassword = "test-admin-password";
 const postalCodes = new Set(["10115", "20095", "80331"]);
 
 describe("backend API", () => {
@@ -17,6 +18,7 @@ describe("backend API", () => {
       config: {
         sqlitePath: ":memory:",
         adminToken,
+        adminPassword,
         minPublicResponsesPerPlz: 3,
         responseRateLimitMax: 100
       },
@@ -58,6 +60,7 @@ describe("backend API", () => {
       config: {
         sqlitePath,
         adminToken,
+        adminPassword,
         minPublicResponsesPerPlz: 1,
         responseRateLimitMax: 100
       },
@@ -152,6 +155,73 @@ describe("backend API", () => {
     });
   });
 
+  it("creates and clears browser-session admin auth cookies", async () => {
+    const missing = await server.app.inject({
+      method: "POST",
+      url: "/api/admin/login",
+      payload: {}
+    });
+    expect(missing.statusCode).toBe(401);
+
+    const rejected = await server.app.inject({
+      method: "POST",
+      url: "/api/admin/login",
+      payload: { password: "wrong" }
+    });
+    expect(rejected.statusCode).toBe(401);
+
+    const accepted = await server.app.inject({
+      method: "POST",
+      url: "/api/admin/login",
+      payload: { password: adminPassword }
+    });
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json()).toEqual({ authenticated: true });
+    const cookie = getSetCookie(accepted);
+    expect(cookie).toContain("admin_session=");
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=Lax");
+
+    const session = await server.app.inject({
+      method: "GET",
+      url: "/api/admin/session",
+      headers: { cookie }
+    });
+    expect(session.statusCode).toBe(200);
+    expect(session.json()).toEqual({ authenticated: true });
+
+    const stats = await server.app.inject({
+      method: "GET",
+      url: "/api/admin/stats",
+      headers: { cookie }
+    });
+    expect(stats.statusCode).toBe(200);
+
+    const exportResponse = await server.app.inject({
+      method: "GET",
+      url: "/api/admin/export.csv",
+      headers: { cookie }
+    });
+    expect(exportResponse.statusCode).toBe(200);
+    expect(exportResponse.headers["content-type"]).toContain("text/csv");
+
+    const logout = await server.app.inject({
+      method: "POST",
+      url: "/api/admin/logout",
+      headers: { cookie }
+    });
+    expect(logout.statusCode).toBe(200);
+    expect(logout.json()).toEqual({ authenticated: false });
+    expect(getSetCookie(logout)).toContain("Max-Age=0");
+
+    const afterLogout = await server.app.inject({
+      method: "GET",
+      url: "/api/admin/stats",
+      headers: { cookie }
+    });
+    expect(afterLogout.statusCode).toBe(401);
+  });
+
   it("saves one page with two questions and fetches both from the active survey", async () => {
     const accepted = await server.app.inject({
       method: "POST",
@@ -198,6 +268,7 @@ describe("backend API", () => {
       config: {
         sqlitePath,
         adminToken,
+        adminPassword,
         minPublicResponsesPerPlz: 1,
         responseRateLimitMax: 100
       },
@@ -228,6 +299,7 @@ describe("backend API", () => {
       config: {
         sqlitePath,
         adminToken,
+        adminPassword,
         minPublicResponsesPerPlz: 1,
         responseRateLimitMax: 100
       },
@@ -597,5 +669,10 @@ describe("backend API", () => {
     } finally {
       db.close();
     }
+  }
+
+  function getSetCookie(response: { headers: Record<string, unknown> }): string {
+    const setCookie = response.headers["set-cookie"];
+    return Array.isArray(setCookie) ? String(setCookie[0]) : String(setCookie);
   }
 });

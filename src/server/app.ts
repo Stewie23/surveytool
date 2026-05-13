@@ -3,7 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import { getAggregates, getTotals, upsertAggregate } from "./aggregate.js";
-import { isAdminRequest } from "./auth.js";
+import { adminSessionCookie, clearAdminSessionCookie, getAdminSessionId, hasAdminPassword, isAdminRequest, isAdminSessionRequest } from "./auth.js";
 import { type AppConfig, loadConfig } from "./config.js";
 import { type Db, migrate, openDb, seedDefaultSurvey, syncPostalCodes, transaction } from "./db.js";
 import { loadPostalCodes } from "./plzDataset.js";
@@ -58,6 +58,7 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
   const db = options.db ?? openDb(config.sqlitePath);
   const postalCodes = options.postalCodes ?? loadPostalCodes(config.postalCodesPath);
   const hub = new SseHub();
+  const adminSessions = new Set<string>();
 
   migrate(db);
   seedDefaultSurvey(db);
@@ -75,8 +76,36 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
     return serializeSurvey(db, survey);
   });
 
+  app.get("/api/admin/session", async (request) => ({
+    authenticated: isAdminSessionRequest(request, adminSessions)
+  }));
+
+  app.post("/api/admin/login", async (request, reply) => {
+    const password = typeof request.body === "object" && request.body && "password" in request.body
+      ? (request.body as { password?: unknown }).password
+      : undefined;
+
+    if (!hasAdminPassword(password, config.adminPassword)) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
+
+    const sessionId = randomUUID();
+    adminSessions.add(sessionId);
+    reply.header("set-cookie", adminSessionCookie(sessionId));
+    return { authenticated: true };
+  });
+
+  app.post("/api/admin/logout", async (request, reply) => {
+    const sessionId = getAdminSessionId(request);
+    if (sessionId) {
+      adminSessions.delete(sessionId);
+    }
+    reply.header("set-cookie", clearAdminSessionCookie());
+    return { authenticated: false };
+  });
+
   app.post("/api/admin/survey", async (request, reply) => {
-    if (!isAdminRequest(request, config.adminToken)) {
+    if (!isAdminRequest(request, config.adminToken, adminSessions)) {
       return reply.code(401).send({ error: "Unauthorized" });
     }
 
@@ -225,7 +254,7 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
   });
 
   app.get("/api/admin/export.csv", async (request, reply) => {
-    if (!isAdminRequest(request, config.adminToken)) {
+    if (!isAdminRequest(request, config.adminToken, adminSessions)) {
       return reply.code(401).send({ error: "Unauthorized" });
     }
 
@@ -249,7 +278,7 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
   });
 
   app.get("/api/admin/stats", async (request, reply) => {
-    if (!isAdminRequest(request, config.adminToken)) {
+    if (!isAdminRequest(request, config.adminToken, adminSessions)) {
       return reply.code(401).send({ error: "Unauthorized" });
     }
     const survey = getActiveSurvey(db);
@@ -257,7 +286,7 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
   });
 
   app.post("/api/admin/clear-results", async (request, reply) => {
-    if (!isAdminRequest(request, config.adminToken)) {
+    if (!isAdminRequest(request, config.adminToken, adminSessions)) {
       return reply.code(401).send({ error: "Unauthorized" });
     }
 
@@ -279,7 +308,7 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
   });
 
   app.post("/api/admin/random-responses", async (request, reply) => {
-    if (!isAdminRequest(request, config.adminToken)) {
+    if (!isAdminRequest(request, config.adminToken, adminSessions)) {
       return reply.code(401).send({ error: "Unauthorized" });
     }
 
