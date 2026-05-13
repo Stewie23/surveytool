@@ -15,6 +15,8 @@ import {
 } from "../lib/api";
 import { toFeatureCollection } from "../lib/plzJoin";
 
+const RESULTS_REFRESH_INTERVAL_MS = 5000;
+
 type StreamPayload = {
   type: "aggregate-update" | "aggregate-snapshot";
   survey_id: string;
@@ -108,9 +110,9 @@ export function MapPage() {
     }
   }, []);
 
-  const refreshResults = useCallback(() => {
+  const refreshResults = useCallback((announce = true) => {
     if (!survey || questions.length === 0) return Promise.resolve();
-    return loadResults(survey.id, questions, true);
+    return loadResults(survey.id, questions, announce);
   }, [loadResults, questions, survey]);
 
   useEffect(() => {
@@ -150,13 +152,32 @@ export function MapPage() {
     function handle(event: MessageEvent<string>) {
       const payload = JSON.parse(event.data) as StreamPayload;
       if (payload.type === "aggregate-snapshot" || payload.type === "aggregate-update") {
-        void refreshResults();
+        void refreshResults(false);
       }
     }
     source.addEventListener("aggregate-snapshot", handle);
     source.addEventListener("aggregate-update", handle);
     source.onerror = () => setStatus("Live stream disconnected. Retrying...");
     return () => source.close();
+  }, [refreshResults, survey]);
+
+  useEffect(() => {
+    if (!survey) return;
+
+    function refreshIfVisible() {
+      if (document.hidden) return;
+      void refreshResults(false);
+    }
+
+    const intervalId = window.setInterval(refreshIfVisible, RESULTS_REFRESH_INTERVAL_MS);
+    window.addEventListener("focus", refreshIfVisible);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshIfVisible);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+    };
   }, [refreshResults, survey]);
 
   const total = useMemo(() => aggregates.reduce((sum, item) => sum + item.count, 0), [aggregates]);
@@ -194,7 +215,7 @@ export function MapPage() {
             <span>{total} responses</span>
             <span>{aggregates.length} PLZ areas</span>
           </div>
-          <button type="button" onClick={() => void refreshResults()} disabled={isRefreshing}>
+          <button type="button" onClick={() => void refreshResults(true)} disabled={isRefreshing}>
             {isRefreshing ? "Refreshing..." : "Refresh results"}
           </button>
         </div>

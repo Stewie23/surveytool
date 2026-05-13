@@ -15,6 +15,7 @@ vi.mock("../src/client/src/components/GermanyPlzMap", () => ({
 }));
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   localStorage.clear();
@@ -522,6 +523,27 @@ describe("frontend map page", () => {
     });
 
     await waitFor(() => expect(screen.getByTestId("mock-map")).toHaveTextContent("3"));
+    expect(fetchMock.mock.calls.filter(([path]) => path === "/api/results/active")).toHaveLength(2);
+    expect(fetchMock.mock.calls.filter(([path]) => path === "/data/germany-plz.topojson")).toHaveLength(1);
+  });
+
+  it("refreshes result data on window focus without reloading PLZ shapes", async () => {
+    FakeEventSource.instances = [];
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const fetchMock = mapFetchMock([
+      [{ question_id: "q-1", aggregates: [{ question_id: "q-1", postal_code: "10115", count: 1, average: 2, sum: 2, hidden: false }] }],
+      [{ question_id: "q-1", aggregates: [{ question_id: "q-1", postal_code: "10115", count: 4, average: 2, sum: 8, hidden: false }] }]
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MapPage />);
+    expect(await screen.findByTestId("mock-map")).toHaveTextContent("1");
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() => expect(screen.getByTestId("mock-map")).toHaveTextContent("4"));
     expect(fetchMock.mock.calls.filter(([path]) => path === "/api/results/active")).toHaveLength(2);
     expect(fetchMock.mock.calls.filter(([path]) => path === "/data/germany-plz.topojson")).toHaveLength(1);
   });
