@@ -1,4 +1,5 @@
 import path from "node:path";
+import fs from "node:fs";
 
 export type AppConfig = {
   port: number;
@@ -21,6 +22,7 @@ function numberFromEnv(name: string, fallback: number): number {
 }
 
 export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
+  loadDotEnv();
   const adminToken = process.env.ADMIN_TOKEN ?? "dev-admin-token";
   return {
     port: numberFromEnv("PORT", 3000),
@@ -35,4 +37,34 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     staticDir: path.resolve("dist", "client"),
     ...overrides
   };
+}
+
+function loadDotEnv(): void {
+  const envPath = path.resolve(".env");
+  if (!fs.existsSync(envPath)) return;
+
+  const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    const separator = trimmed.indexOf("=");
+    if (separator <= 0) continue;
+
+    const name = trimmed.slice(0, separator).trim();
+    const rawValue = trimmed.slice(separator + 1).trim();
+    if (!name || process.env[name] !== undefined) continue;
+
+    process.env[name] = unquoteEnvValue(rawValue);
+  }
+}
+
+function unquoteEnvValue(value: string): string {
+  if (
+    (value.startsWith("\"") && value.endsWith("\"")) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+  return value;
 }
