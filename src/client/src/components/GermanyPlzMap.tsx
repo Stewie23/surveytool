@@ -1,13 +1,14 @@
 import maplibregl, { type LngLatBoundsLike, type MapMouseEvent } from "maplibre-gl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Aggregate, Survey } from "../../../shared/types";
-import { colorForAverage } from "../lib/colorScale";
+import { colorForAverage, type PaletteColor } from "../lib/colorScale";
 import { joinAggregates, plzLevelForZoom, toFeatureCollection, type PlzLevel } from "../lib/plzJoin";
 
 type Props = {
   plzData: GeoJSON.FeatureCollection<GeoJSON.Geometry, Record<string, unknown>>;
   aggregates: Aggregate[];
   survey: Survey;
+  palette?: PaletteColor[];
 };
 
 type HoverInfo = {
@@ -74,7 +75,7 @@ function expandBounds(bounds: maplibregl.LngLatBounds, paddingRatio = 0.18): Lng
   ];
 }
 
-export function GermanyPlzMap({ plzData, aggregates, survey }: Props) {
+export function GermanyPlzMap({ plzData, aggregates, survey, palette }: Props) {
   const useAggregatedShapes = survey.use_aggregated_shapes ?? false;
   const initialLevel: PlzLevel = useAggregatedShapes ? 1 : 5;
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -95,11 +96,12 @@ export function GermanyPlzMap({ plzData, aggregates, survey }: Props) {
           typeof item.properties?.average === "number" ? item.properties.average : null,
           survey.min_rating,
           survey.max_rating,
-          Boolean(item.properties?.hidden)
+          Boolean(item.properties?.hidden),
+          palette
         )
       }
     }))
-  }), [joined, survey.min_rating, survey.max_rating]);
+  }), [joined, palette, survey.min_rating, survey.max_rating]);
   const initialMapDataRef = useRef(mapData);
   const boundsRef = useRef(calculateBounds(plzData));
 

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RatingScale } from "../src/client/src/components/RatingScale";
 import { AdminPage } from "../src/client/src/pages/AdminPage";
 import { SurveyPage } from "../src/client/src/pages/SurveyPage";
-import { colorForAverage } from "../src/client/src/lib/colorScale";
+import { colorForAverage, parsePaletteText } from "../src/client/src/lib/colorScale";
 import { aggregateToPlzLevel, joinAggregates, plzLevelForZoom } from "../src/client/src/lib/plzJoin";
 import { isValidPostalCode } from "../src/client/src/lib/validation";
 
@@ -126,6 +126,7 @@ describe("frontend survey controls", () => {
           }],
           terms_enabled: false,
           terms_text: "",
+          map_palette: "batlow",
           is_active: true
         })
       })
@@ -195,6 +196,7 @@ describe("frontend survey controls", () => {
           ],
           terms_enabled: false,
           terms_text: "",
+          map_palette: "batlow",
           is_active: true
         })
       })
@@ -230,6 +232,7 @@ describe("frontend survey controls", () => {
           ],
           terms_enabled: true,
           terms_text: "Terms go here",
+          map_palette: "tokyo",
           is_active: true
         })
       })
@@ -253,6 +256,7 @@ describe("frontend survey controls", () => {
     fireEvent.click(screen.getByRole("button", { name: /add page/i }));
     fireEvent.click(screen.getByLabelText(/enable terms/i));
     fireEvent.change(screen.getByLabelText(/terms text/i), { target: { value: "Terms go here" } });
+    fireEvent.change(screen.getByLabelText(/map palette/i), { target: { value: "tokyo" } });
     fireEvent.click(screen.getByRole("button", { name: /save survey/i }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Survey saved."));
     const saveCall = fetchMock.mock.calls.find(([path]) => path === "/api/admin/survey");
@@ -266,6 +270,7 @@ describe("frontend survey controls", () => {
       terms_enabled: true,
       terms_text: "Terms go here",
       use_aggregated_shapes: false,
+      map_palette: "tokyo",
       is_active: true
     });
     expect(saveBody.pages).toHaveLength(2);
@@ -326,6 +331,7 @@ describe("frontend survey controls", () => {
           }],
           terms_enabled: false,
           terms_text: "",
+          map_palette: "batlow",
           is_active: true
         })
       })
@@ -375,6 +381,7 @@ describe("frontend survey controls", () => {
           }],
           terms_enabled: false,
           terms_text: "",
+          map_palette: "batlow",
           is_active: true
         })
       })
@@ -496,5 +503,12 @@ describe("frontend map helpers", () => {
     expect(colorForAverage(5, -5, 5)).toBe("rgb(220, 38, 38)");
     expect(colorForAverage(null, -5, 5)).toBe("#e5e7eb");
     expect(colorForAverage(1, -5, 5, true)).toBe("#9ca3af");
+  });
+
+  it("maps continuous Scientific Colour Maps text to interpolated colors", () => {
+    const palette = parsePaletteText("0 0 0\n1 0.5 0");
+    expect(colorForAverage(-5, -5, 5, false, palette)).toBe("rgb(0, 0, 0)");
+    expect(colorForAverage(5, -5, 5, false, palette)).toBe("rgb(255, 128, 0)");
+    expect(colorForAverage(0, -5, 5, false, palette)).toBe("rgb(128, 64, 0)");
   });
 });

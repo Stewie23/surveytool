@@ -9,6 +9,7 @@ export type PagedSurvey = Survey & {
   terms_enabled?: boolean;
   terms_text?: string;
   use_aggregated_shapes?: boolean;
+  map_palette?: string;
 };
 
 export type QuestionAggregate = Aggregate & {

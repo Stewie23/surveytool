@@ -440,6 +440,23 @@ textarea {
   width: 24px;
 }
 
+.legend__scale {
+  display: grid;
+  gap: 6px;
+}
+
+.legend__scale i {
+  height: 18px;
+  width: 100%;
+}
+
+.legend__scale span {
+  color: #475569;
+  display: flex;
+  font-size: 0.78rem;
+  justify-content: space-between;
+}
+
 .legend .negative { background: #2563eb; }
 .legend .neutral { background: #f8fafc; }
 .legend .positive { background: #dc2626; }

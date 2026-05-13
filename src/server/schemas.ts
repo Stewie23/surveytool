@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_MAP_PALETTE, MAP_PALETTE_IDS } from "../shared/mapPalettes.js";
 
 const ratingLabelsSchema = z.record(z.string().regex(/^-?\d+$/), z.string().trim().max(80));
 
@@ -58,7 +59,8 @@ export const adminSurveySchema = z.object({
   is_active: z.boolean().default(true),
   terms_enabled: z.boolean().default(false),
   terms_text: z.string().trim().max(5000).default(""),
-  use_aggregated_shapes: z.boolean().default(false)
+  use_aggregated_shapes: z.boolean().default(false),
+  map_palette: z.enum(MAP_PALETTE_IDS).default(DEFAULT_MAP_PALETTE)
 }).superRefine((value, ctx) => {
   const pageIds = new Set<string>();
   const questionIds = new Set<string>();

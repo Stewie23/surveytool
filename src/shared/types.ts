@@ -5,6 +5,7 @@ export type Survey = {
   terms_enabled: boolean;
   terms_text: string;
   use_aggregated_shapes: boolean;
+  map_palette?: string;
   is_active?: boolean;
   question_text?: string;
   min_rating?: number;

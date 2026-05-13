@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { DEFAULT_MAP_PALETTE, MAP_PALETTE_IDS } from "../../../shared/mapPalettes";
 import { RatingScale } from "../components/RatingScale";
 import { apiGet, apiPost, getActiveSurvey, type PagedSurvey, type SurveyPageConfig, type SurveyQuestion } from "../lib/api";
 import { ratingValues } from "../lib/validation";
@@ -68,7 +69,8 @@ function normalizeSurvey(survey: PagedSurvey): PagedSurvey {
     pages,
     terms_enabled: survey.terms_enabled ?? false,
     terms_text: survey.terms_text ?? "",
-    use_aggregated_shapes: survey.use_aggregated_shapes ?? false
+    use_aggregated_shapes: survey.use_aggregated_shapes ?? false,
+    map_palette: survey.map_palette ?? DEFAULT_MAP_PALETTE
   };
 }
 
@@ -166,6 +168,7 @@ export function AdminPage() {
         terms_enabled: survey.terms_enabled ?? false,
         terms_text: survey.terms_text ?? "",
         use_aggregated_shapes: survey.use_aggregated_shapes ?? false,
+        map_palette: survey.map_palette ?? DEFAULT_MAP_PALETTE,
         is_active: survey.is_active ?? true
       };
 
@@ -403,6 +406,20 @@ export function AdminPage() {
             setSurvey((current) => current ? { ...current, use_aggregated_shapes: useAggregatedShapes } : current);
           }} />
           Use aggregated shapes
+        </label>
+        <label className="field">
+          <span>Map palette</span>
+          <select
+            value={survey.map_palette ?? DEFAULT_MAP_PALETTE}
+            onChange={(event) => {
+              const mapPalette = event.target.value;
+              setSurvey((current) => current ? { ...current, map_palette: mapPalette } : current);
+            }}
+          >
+            {MAP_PALETTE_IDS.map((palette) => (
+              <option value={palette} key={palette}>{palette}</option>
+            ))}
+          </select>
         </label>
 
         <div className="wide page-builder">

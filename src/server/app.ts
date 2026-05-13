@@ -10,6 +10,7 @@ import { loadPostalCodes } from "./plzDataset.js";
 import { checkResponseRateLimit } from "./rateLimit.js";
 import { adminSurveySchema, randomResponsesSchema, responseSchema, surveyIdParamsSchema } from "./schemas.js";
 import { SseHub } from "./sse.js";
+import { DEFAULT_MAP_PALETTE, isMapPaletteId } from "../shared/mapPalettes.js";
 
 type SurveyRow = {
   id: string;
@@ -22,6 +23,7 @@ type SurveyRow = {
   terms_enabled: number;
   terms_text: string;
   use_aggregated_shapes: number;
+  map_palette?: string;
   is_active: number;
 };
 
@@ -124,8 +126,8 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
       }
       db.prepare(`
         INSERT INTO surveys
-          (id, title, question_text, min_rating, max_rating, rating_labels, pages, terms_enabled, terms_text, use_aggregated_shapes, is_active, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, title, question_text, min_rating, max_rating, rating_labels, pages, terms_enabled, terms_text, use_aggregated_shapes, map_palette, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           title = excluded.title,
           question_text = excluded.question_text,
@@ -136,6 +138,7 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
           terms_enabled = excluded.terms_enabled,
           terms_text = excluded.terms_text,
           use_aggregated_shapes = excluded.use_aggregated_shapes,
+          map_palette = excluded.map_palette,
           is_active = excluded.is_active,
           updated_at = excluded.updated_at
       `).run(
@@ -149,6 +152,7 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
         parsed.data.terms_enabled ? 1 : 0,
         parsed.data.terms_text,
         parsed.data.use_aggregated_shapes ? 1 : 0,
+        parsed.data.map_palette,
         parsed.data.is_active ? 1 : 0,
         now,
         now
@@ -383,6 +387,7 @@ function serializeSurvey(db: Db, survey: SurveyRow) {
     terms_enabled: Boolean(survey.terms_enabled),
     terms_text: survey.terms_text,
     use_aggregated_shapes: Boolean(survey.use_aggregated_shapes),
+    map_palette: survey.map_palette && isMapPaletteId(survey.map_palette) ? survey.map_palette : DEFAULT_MAP_PALETTE,
     question_text: firstQuestion?.text ?? survey.question_text,
     min_rating: firstQuestion?.min_rating ?? survey.min_rating,
     max_rating: firstQuestion?.max_rating ?? survey.max_rating,
@@ -631,6 +636,7 @@ function contentType(filePath: string): string {
   if (ext === ".html") return "text/html; charset=utf-8";
   if (ext === ".js") return "text/javascript; charset=utf-8";
   if (ext === ".css") return "text/css; charset=utf-8";
+  if (ext === ".txt") return "text/plain; charset=utf-8";
   if (ext === ".json" || ext === ".topojson") return "application/json; charset=utf-8";
   if (ext === ".svg") return "image/svg+xml";
   return "application/octet-stream";

@@ -41,6 +41,7 @@ describe("backend API", () => {
       title: "Stimmungsbild",
       terms_enabled: false,
       use_aggregated_shapes: false,
+      map_palette: "batlow",
       pages: [{
         id: "default-page",
         questions: [{
@@ -73,6 +74,7 @@ describe("backend API", () => {
       id: "legacy",
       title: "Legacy survey",
       use_aggregated_shapes: false,
+      map_palette: "batlow",
       pages: [{
         title: "Legacy survey",
         questions: [{
@@ -134,6 +136,7 @@ describe("backend API", () => {
         terms_enabled: true,
         terms_text: "Please accept",
         use_aggregated_shapes: true,
+        map_palette: "tokyo",
         is_active: true
       }
     });
@@ -143,6 +146,7 @@ describe("backend API", () => {
       terms_enabled: true,
       terms_text: "Please accept",
       use_aggregated_shapes: true,
+      map_palette: "tokyo",
       pages: [{
         id: "page-1",
         questions: [{

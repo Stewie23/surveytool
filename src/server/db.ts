@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import { DEFAULT_MAP_PALETTE } from "../shared/mapPalettes.js";
 
 export type Db = DatabaseSync;
 
@@ -34,6 +35,7 @@ export function migrate(db: Db): void {
       terms_enabled INTEGER NOT NULL DEFAULT 0,
       terms_text TEXT NOT NULL DEFAULT '',
       use_aggregated_shapes INTEGER NOT NULL DEFAULT 0,
+      map_palette TEXT NOT NULL DEFAULT 'batlow',
       is_active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -105,6 +107,9 @@ export function migrate(db: Db): void {
   if (!surveyColumns.some((column) => column.name === "use_aggregated_shapes")) {
     db.exec("ALTER TABLE surveys ADD COLUMN use_aggregated_shapes INTEGER NOT NULL DEFAULT 0");
   }
+  if (!surveyColumns.some((column) => column.name === "map_palette")) {
+    db.exec(`ALTER TABLE surveys ADD COLUMN map_palette TEXT NOT NULL DEFAULT '${DEFAULT_MAP_PALETTE}'`);
+  }
 
   backfillSurveyPages(db);
   backfillNormalizedSurveyDefinitions(db);
@@ -134,8 +139,8 @@ export function seedDefaultSurvey(db: Db): void {
   const now = new Date().toISOString();
   db.prepare(`
     INSERT INTO surveys
-      (id, title, question_text, min_rating, max_rating, rating_labels, pages, terms_enabled, terms_text, use_aggregated_shapes, is_active, created_at, updated_at)
-    VALUES (?, ?, ?, -3, 3, '{}', ?, 0, '', 0, 1, ?, ?)
+      (id, title, question_text, min_rating, max_rating, rating_labels, pages, terms_enabled, terms_text, use_aggregated_shapes, map_palette, is_active, created_at, updated_at)
+    VALUES (?, ?, ?, -3, 3, '{}', ?, 0, '', 0, ?, 1, ?, ?)
   `).run(
     "default",
     "Stimmungsbild",
@@ -151,6 +156,7 @@ export function seedDefaultSurvey(db: Db): void {
         rating_labels: {}
       }]
     }]),
+    DEFAULT_MAP_PALETTE,
     now,
     now
   );

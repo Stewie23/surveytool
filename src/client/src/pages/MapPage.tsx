@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { DEFAULT_MAP_PALETTE } from "../../../shared/mapPalettes";
 import type { QuestionAggregates, Survey } from "../../../shared/types";
 import { GermanyPlzMap } from "../components/GermanyPlzMap";
 import { MapLegend } from "../components/MapLegend";
+import { parsePaletteText, type PaletteColor } from "../lib/colorScale";
 import {
   getActiveSurvey,
   getAggregates,
@@ -75,6 +77,7 @@ export function MapPage() {
   const [survey, setSurvey] = useState<PagedSurvey | null>(null);
   const [plzData, setPlzData] = useState<GeoJSON.FeatureCollection<GeoJSON.Geometry, Record<string, unknown>> | null>(null);
   const [groups, setGroups] = useState<GroupedAggregate[]>([]);
+  const [palette, setPalette] = useState<PaletteColor[] | undefined>();
   const [selectedQuestionId, setSelectedQuestionId] = useState("");
   const [status, setStatus] = useState("");
 
@@ -101,6 +104,19 @@ export function MapPage() {
     }
     load().catch((error) => setStatus(error.message));
   }, []);
+
+  useEffect(() => {
+    if (!survey) return;
+    const paletteId = survey.map_palette ?? DEFAULT_MAP_PALETTE;
+    setPalette(undefined);
+    fetch(`/data/gradients/${encodeURIComponent(paletteId)}.txt`)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Could not load ${paletteId} palette`);
+        return response.text();
+      })
+      .then((text) => setPalette(parsePaletteText(text)))
+      .catch((error) => console.error(error));
+  }, [survey]);
 
   useEffect(() => {
     if (!survey) return;
@@ -150,7 +166,8 @@ export function MapPage() {
     question_text: selectedQuestion.text,
     min_rating: selectedQuestion.min_rating,
     max_rating: selectedQuestion.max_rating,
-    rating_labels: selectedQuestion.rating_labels
+    rating_labels: selectedQuestion.rating_labels,
+    map_palette: survey.map_palette ?? DEFAULT_MAP_PALETTE
   };
 
   return (
@@ -176,8 +193,8 @@ export function MapPage() {
         </div>
       </div>
       <div className="map-content">
-        <GermanyPlzMap plzData={plzData} aggregates={aggregates} survey={mapSurvey} />
-        <MapLegend />
+        <GermanyPlzMap plzData={plzData} aggregates={aggregates} survey={mapSurvey} palette={palette} />
+        <MapLegend palette={palette} />
       </div>
       {status ? <p role="status" className="notice">{status}</p> : null}
     </section>
