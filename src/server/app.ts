@@ -637,7 +637,7 @@ function contentType(filePath: string): string {
   if (ext === ".js") return "text/javascript; charset=utf-8";
   if (ext === ".css") return "text/css; charset=utf-8";
   if (ext === ".txt") return "text/plain; charset=utf-8";
-  if (ext === ".json" || ext === ".topojson") return "application/json; charset=utf-8";
+  if (ext === ".json" || ext === ".topojson" || ext === ".geojson") return "application/json; charset=utf-8";
   if (ext === ".svg") return "image/svg+xml";
   return "application/octet-stream";
 }

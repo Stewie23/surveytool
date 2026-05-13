@@ -63,7 +63,7 @@ class FakeEventSource {
   }
 }
 
-function mapFetchMock(results: Array<unknown>) {
+function mapFetchMock(results: Array<unknown>, useAggregatedShapes = false) {
   let resultIndex = 0;
   const plzData = {
     type: "FeatureCollection",
@@ -90,12 +90,13 @@ function mapFetchMock(results: Array<unknown>) {
         }],
         terms_enabled: false,
         terms_text: "",
-        use_aggregated_shapes: false,
+        use_aggregated_shapes: useAggregatedShapes,
         map_palette: "batlow",
         is_active: true
       });
     }
     if (path === "/data/germany-plz.topojson") return jsonResponse(plzData);
+    if (path === "/data/germany-plz-1.topojson.geojson") return jsonResponse(plzData);
     if (path === "/data/gradients/batlow.txt") return textResponse("0 0 0\n1 1 1");
     if (path === "/api/results/active") {
       const result = results[Math.min(resultIndex, results.length - 1)];
@@ -481,6 +482,20 @@ describe("frontend map page", () => {
     expect(FakeEventSource.instances[0]?.url).toBe("/api/results/active/stream");
     expect(fetchMock).toHaveBeenCalledWith("/data/germany-plz.topojson");
     expect(fetchMock).toHaveBeenCalledWith("/data/gradients/batlow.txt");
+  });
+
+  it("loads the GeoJSON level 1 shape file first when aggregated shapes are enabled", async () => {
+    FakeEventSource.instances = [];
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const fetchMock = mapFetchMock([
+      [{ question_id: "q-1", aggregates: [{ question_id: "q-1", postal_code: "10115", count: 1, average: 2, sum: 2, hidden: false }] }]
+    ], true);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MapPage />);
+
+    expect(await screen.findByRole("heading", { name: "Rate it" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith("/data/germany-plz-1.topojson.geojson");
   });
 
   it("refreshes result data manually without reloading PLZ shapes", async () => {

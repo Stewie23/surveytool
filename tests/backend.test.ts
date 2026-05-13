@@ -567,6 +567,30 @@ describe("backend API", () => {
     }
   });
 
+  it("serves GeoJSON files with a JSON content type", async () => {
+    const staticDir = fs.mkdtempSync(path.join(os.tmpdir(), "survey-static-"));
+    fs.mkdirSync(path.join(staticDir, "data"), { recursive: true });
+    fs.writeFileSync(path.join(staticDir, "index.html"), "<!doctype html>");
+    fs.writeFileSync(path.join(staticDir, "data", "germany-plz-1.topojson.geojson"), "{\"type\":\"FeatureCollection\",\"features\":[]}");
+
+    const staticServer = buildServer({
+      config: {
+        sqlitePath: ":memory:",
+        staticDir
+      },
+      postalCodes
+    });
+
+    try {
+      const response = await staticServer.app.inject({ method: "GET", url: "/data/germany-plz-1.topojson.geojson" });
+      expect(response.statusCode).toBe(200);
+      expect(response.headers["content-type"]).toContain("application/json");
+    } finally {
+      await staticServer.app.close();
+      fs.rmSync(staticDir, { recursive: true, force: true });
+    }
+  });
+
   it("sends an initial SSE aggregate snapshot", async () => {
     const survey = await activeSurvey();
     await server.app.listen({ port: 0, host: "127.0.0.1" });

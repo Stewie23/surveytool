@@ -21,8 +21,8 @@ type HoverInfo = {
 };
 
 const sourcePathByLevel: Record<PlzLevel, string> = {
-  1: "/data/germany-plz-1.topojson",
-  2: "/data/germany-plz-2.topojson",
+  1: "/data/germany-plz-1.topojson.geojson",
+  2: "/data/germany-plz-2.topojson.geojson",
   3: "/data/germany-plz-3.topojson",
   4: "/data/germany-plz-4.topojson",
   5: "/data/germany-plz.topojson"
