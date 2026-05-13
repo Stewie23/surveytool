@@ -12,6 +12,32 @@ afterEach(() => {
   localStorage.clear();
 });
 
+function jsonResponse(data: unknown) {
+  return {
+    ok: true,
+    text: async () => JSON.stringify(data)
+  };
+}
+
+function textResponse(text: string) {
+  return {
+    ok: true,
+    text: async () => text
+  };
+}
+
+function adminFetchMock(responses: Array<unknown | ((path: string, options?: RequestInit) => unknown)>) {
+  const queue = [...responses];
+  return vi.fn(async (path: string, options?: RequestInit) => {
+    if (path.startsWith("/data/gradients/")) {
+      return textResponse("0 0 0\n1 1 1");
+    }
+    const next = queue.shift();
+    if (typeof next === "function") return next(path, options);
+    return next;
+  });
+}
+
 describe("frontend survey controls", () => {
   it("renders and selects a dynamic rating scale", () => {
     const onChange = vi.fn();
@@ -100,19 +126,10 @@ describe("frontend survey controls", () => {
   });
 
   it("requires an admin password before showing the admin editor", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify({ authenticated: false })
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify({ authenticated: true })
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify({
+    const fetchMock = adminFetchMock([
+      jsonResponse({ authenticated: false }),
+      jsonResponse({ authenticated: true }),
+      jsonResponse({
           id: "default",
           title: "Test",
           question_text: "Rate it",
@@ -128,16 +145,10 @@ describe("frontend survey controls", () => {
           terms_text: "",
           map_palette: "batlow",
           is_active: true
-        })
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify({ totalResponses: 0, postalCodeCount: 0 })
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify({ authenticated: false })
-      });
+      }),
+      jsonResponse({ totalResponses: 0, postalCodeCount: 0 }),
+      jsonResponse({ authenticated: false })
+    ]);
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AdminPage />);
@@ -170,15 +181,9 @@ describe("frontend survey controls", () => {
   it("edits pages, terms, and survey data from the admin page", async () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const open = vi.spyOn(window, "open").mockReturnValue(null);
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify({ authenticated: true })
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify({
+    const fetchMock = adminFetchMock([
+      jsonResponse({ authenticated: true }),
+      jsonResponse({
           id: "default",
           title: "Test",
           question_text: "Rate it",
@@ -198,15 +203,9 @@ describe("frontend survey controls", () => {
           terms_text: "",
           map_palette: "batlow",
           is_active: true
-        })
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify({ totalResponses: 0, postalCodeCount: 0 })
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify({
+      }),
+      jsonResponse({ totalResponses: 0, postalCodeCount: 0 }),
+      jsonResponse({
           id: "default",
           title: "Test",
           question_text: "Rate it",
@@ -234,16 +233,10 @@ describe("frontend survey controls", () => {
           terms_text: "Terms go here",
           map_palette: "tokyo",
           is_active: true
-        })
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify({ totalResponses: 12, postalCodeCount: 3 })
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify({ totalResponses: 0, postalCodeCount: 0 })
-      });
+      }),
+      jsonResponse({ totalResponses: 12, postalCodeCount: 3 }),
+      jsonResponse({ totalResponses: 0, postalCodeCount: 0 })
+    ]);
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AdminPage />);
@@ -309,15 +302,9 @@ describe("frontend survey controls", () => {
   });
 
   it("saves an added admin question without requiring another editor action", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify({ authenticated: true })
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify({
+    const fetchMock = adminFetchMock([
+      jsonResponse({ authenticated: true }),
+      jsonResponse({
           id: "default",
           title: "Test",
           question_text: "Rate it",
@@ -333,16 +320,10 @@ describe("frontend survey controls", () => {
           terms_text: "",
           map_palette: "batlow",
           is_active: true
-        })
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify({ totalResponses: 0, postalCodeCount: 0 })
-      })
-      .mockImplementationOnce(async (_path, options) => ({
-        ok: true,
-        text: async () => options?.body as string
-      }));
+      }),
+      jsonResponse({ totalResponses: 0, postalCodeCount: 0 }),
+      (_path: string, options?: RequestInit) => textResponse(options?.body as string)
+    ]);
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AdminPage />);
@@ -359,15 +340,9 @@ describe("frontend survey controls", () => {
   });
 
   it("keeps local questions visible when a stale save response drops pages", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify({ authenticated: true })
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify({
+    const fetchMock = adminFetchMock([
+      jsonResponse({ authenticated: true }),
+      jsonResponse({
           id: "default",
           title: "Test",
           question_text: "Rate it",
@@ -383,15 +358,9 @@ describe("frontend survey controls", () => {
           terms_text: "",
           map_palette: "batlow",
           is_active: true
-        })
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify({ totalResponses: 0, postalCodeCount: 0 })
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => JSON.stringify({
+      }),
+      jsonResponse({ totalResponses: 0, postalCodeCount: 0 }),
+      jsonResponse({
           id: "active",
           title: "Test",
           question_text: "Rate it",
@@ -399,8 +368,8 @@ describe("frontend survey controls", () => {
           max_rating: 3,
           rating_labels: {},
           is_active: true
-        })
-      });
+      })
+    ]);
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AdminPage />);

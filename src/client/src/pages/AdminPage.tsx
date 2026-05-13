@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { DEFAULT_MAP_PALETTE, MAP_PALETTE_IDS } from "../../../shared/mapPalettes";
 import { RatingScale } from "../components/RatingScale";
 import { apiGet, apiPost, getActiveSurvey, type PagedSurvey, type SurveyPageConfig, type SurveyQuestion } from "../lib/api";
+import { paletteGradient, parsePaletteText, type PaletteColor } from "../lib/colorScale";
 import { ratingValues } from "../lib/validation";
 
 type Stats = {
@@ -121,6 +122,7 @@ export function AdminPage() {
   const [selectedPageId, setSelectedPageId] = useState("");
   const [previewRatings, setPreviewRatings] = useState<Record<string, number | null>>({});
   const [stats, setStats] = useState<Stats>({ totalResponses: 0, postalCodeCount: 0 });
+  const [palettePreview, setPalettePreview] = useState<PaletteColor[] | undefined>();
   const [randomCount, setRandomCount] = useState(100);
   const [status, setStatus] = useState("");
   const [isWorking, setIsWorking] = useState(false);
@@ -146,6 +148,19 @@ export function AdminPage() {
     () => survey?.pages?.find((page) => page.id === selectedPageId) ?? survey?.pages?.[0],
     [selectedPageId, survey]
   );
+
+  useEffect(() => {
+    if (!survey) return;
+    const paletteId = survey.map_palette ?? DEFAULT_MAP_PALETTE;
+    setPalettePreview(undefined);
+    fetch(`/data/gradients/${encodeURIComponent(paletteId)}.txt`)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Could not load ${paletteId} palette`);
+        return response.text();
+      })
+      .then((text) => setPalettePreview(parsePaletteText(text)))
+      .catch((error) => console.error(error));
+  }, [survey?.map_palette]);
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -407,20 +422,27 @@ export function AdminPage() {
           }} />
           Use aggregated shapes
         </label>
-        <label className="field">
-          <span>Map palette</span>
-          <select
-            value={survey.map_palette ?? DEFAULT_MAP_PALETTE}
-            onChange={(event) => {
-              const mapPalette = event.target.value;
-              setSurvey((current) => current ? { ...current, map_palette: mapPalette } : current);
-            }}
-          >
-            {MAP_PALETTE_IDS.map((palette) => (
-              <option value={palette} key={palette}>{palette}</option>
-            ))}
-          </select>
-        </label>
+        <div className="field palette-field">
+          <label>
+            <span>Map palette</span>
+            <select
+              value={survey.map_palette ?? DEFAULT_MAP_PALETTE}
+              onChange={(event) => {
+                const mapPalette = event.target.value;
+                setSurvey((current) => current ? { ...current, map_palette: mapPalette } : current);
+              }}
+            >
+              {MAP_PALETTE_IDS.map((palette) => (
+                <option value={palette} key={palette}>{palette}</option>
+              ))}
+            </select>
+          </label>
+          <i
+            className="palette-preview"
+            aria-label={`${survey.map_palette ?? DEFAULT_MAP_PALETTE} palette preview`}
+            style={{ background: paletteGradient(palettePreview) }}
+          />
+        </div>
 
         <div className="wide page-builder">
           <div className="page-tabs" aria-label="Survey pages">
