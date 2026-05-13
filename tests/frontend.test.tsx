@@ -96,7 +96,7 @@ function mapFetchMock(results: Array<unknown>, useAggregatedShapes = false) {
       });
     }
     if (path === "/data/germany-plz.topojson") return jsonResponse(plzData);
-    if (path === "/data/germany-plz-1.topojson.geojson") return jsonResponse(plzData);
+    if (path === "/data/germany-plz-1.topojson.json") return jsonResponse(plzData);
     if (path === "/data/gradients/batlow.txt") return textResponse("0 0 0\n1 1 1");
     if (path === "/api/results/active") {
       const result = results[Math.min(resultIndex, results.length - 1)];
@@ -495,7 +495,7 @@ describe("frontend map page", () => {
     render(<MapPage />);
 
     expect(await screen.findByRole("heading", { name: "Rate it" })).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith("/data/germany-plz-1.topojson.geojson");
+    expect(fetchMock).toHaveBeenCalledWith("/data/germany-plz-1.topojson.json");
   });
 
   it("refreshes result data manually without reloading PLZ shapes", async () => {

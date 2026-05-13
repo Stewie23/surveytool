@@ -122,7 +122,7 @@ export function MapPage() {
       setSurvey(activeSurvey);
       setSelectedQuestionId(activeQuestions[0]?.id ?? "");
       const initialPlzPath = activeSurvey.use_aggregated_shapes
-        ? "/data/germany-plz-1.topojson.geojson"
+        ? "/data/germany-plz-1.topojson.json"
         : "/data/germany-plz.topojson";
       const [plz] = await Promise.all([
         fetch(initialPlzPath).then((response) => response.json()).then(toFeatureCollection),
