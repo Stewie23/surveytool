@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_MAP_PALETTE } from "../../../shared/mapPalettes";
 import type { QuestionAggregates, Survey } from "../../../shared/types";
 import { GermanyPlzMap } from "../components/GermanyPlzMap";
@@ -18,9 +18,7 @@ import { toFeatureCollection } from "../lib/plzJoin";
 type StreamPayload = {
   type: "aggregate-update" | "aggregate-snapshot";
   survey_id: string;
-  question_id?: string;
-  aggregates?: AggregateResponse;
-} & Partial<QuestionAggregate>;
+};
 
 function surveyQuestions(survey: PagedSurvey): SurveyQuestion[] {
   if (survey.pages?.length) {
@@ -80,11 +78,40 @@ export function MapPage() {
   const [palette, setPalette] = useState<PaletteColor[] | undefined>();
   const [selectedQuestionId, setSelectedQuestionId] = useState("");
   const [status, setStatus] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshRequestRef = useRef(0);
 
   const questions = useMemo(() => survey ? surveyQuestions(survey) : [], [survey]);
   const selectedQuestion = questions.find((question) => question.id === selectedQuestionId) ?? questions[0];
   const selectedGroup = groups.find((group) => group.question_id === selectedQuestion?.id) ?? groups[0];
   const aggregates = selectedGroup?.aggregates ?? [];
+
+  const loadResults = useCallback(async (
+    surveyId: string,
+    surveyQuestions: SurveyQuestion[],
+    announce = false
+  ) => {
+    const requestId = ++refreshRequestRef.current;
+    setIsRefreshing(true);
+    try {
+      const rows = await getAggregates(surveyId);
+      if (requestId !== refreshRequestRef.current) return;
+      setGroups(groupAggregates(rows, surveyQuestions));
+      setStatus(announce ? "Results updated." : "");
+    } catch (error) {
+      if (requestId !== refreshRequestRef.current) return;
+      setStatus(error instanceof Error ? error.message : "Could not refresh results");
+    } finally {
+      if (requestId === refreshRequestRef.current) {
+        setIsRefreshing(false);
+      }
+    }
+  }, []);
+
+  const refreshResults = useCallback(() => {
+    if (!survey || questions.length === 0) return Promise.resolve();
+    return loadResults(survey.id, questions, true);
+  }, [loadResults, questions, survey]);
 
   useEffect(() => {
     async function load() {
@@ -95,15 +122,14 @@ export function MapPage() {
       const initialPlzPath = activeSurvey.use_aggregated_shapes
         ? "/data/germany-plz-1.topojson"
         : "/data/germany-plz.topojson";
-      const [plz, rows] = await Promise.all([
+      const [plz] = await Promise.all([
         fetch(initialPlzPath).then((response) => response.json()).then(toFeatureCollection),
-        getAggregates(activeSurvey.id)
+        loadResults(activeSurvey.id, activeQuestions)
       ]);
       setPlzData(plz);
-      setGroups(groupAggregates(rows, activeQuestions));
     }
     load().catch((error) => setStatus(error.message));
-  }, []);
+  }, [loadResults]);
 
   useEffect(() => {
     if (!survey) return;
@@ -123,37 +149,15 @@ export function MapPage() {
     const source = new EventSource(`/api/results/${encodeURIComponent(survey.id)}/stream`);
     function handle(event: MessageEvent<string>) {
       const payload = JSON.parse(event.data) as StreamPayload;
-      if (payload.type === "aggregate-snapshot" && payload.aggregates) {
-        setGroups(groupAggregates(payload.aggregates, questions));
-      }
-      if (payload.type === "aggregate-update") {
-        const updates = Array.isArray(payload.aggregates) && !payload.aggregates.every(isQuestionAggregateGroup)
-          ? payload.aggregates
-          : payload.postal_code
-            ? [{
-              question_id: payload.question_id ?? questions[0]?.id ?? "",
-              postal_code: payload.postal_code,
-              count: payload.count ?? 0,
-              average: payload.average ?? null,
-              sum: payload.sum ?? 0,
-              hidden: payload.hidden
-            }]
-            : [];
-
-        setGroups((current) => current.map((group) => {
-          const groupUpdates = updates.filter((item) => item.question_id === group.question_id);
-          if (groupUpdates.length === 0) return group;
-          const next = group.aggregates.filter((item) => !groupUpdates.some((update) => update.postal_code === item.postal_code));
-          next.push(...groupUpdates);
-          return { ...group, aggregates: next };
-        }));
+      if (payload.type === "aggregate-snapshot" || payload.type === "aggregate-update") {
+        void refreshResults();
       }
     }
     source.addEventListener("aggregate-snapshot", handle);
     source.addEventListener("aggregate-update", handle);
     source.onerror = () => setStatus("Live stream disconnected. Retrying...");
     return () => source.close();
-  }, [questions, survey]);
+  }, [refreshResults, survey]);
 
   const total = useMemo(() => aggregates.reduce((sum, item) => sum + item.count, 0), [aggregates]);
 
@@ -190,6 +194,9 @@ export function MapPage() {
             <span>{total} responses</span>
             <span>{aggregates.length} PLZ areas</span>
           </div>
+          <button type="button" onClick={() => void refreshResults()} disabled={isRefreshing}>
+            {isRefreshing ? "Refreshing..." : "Refresh results"}
+          </button>
         </div>
       </div>
       <div className="map-content">

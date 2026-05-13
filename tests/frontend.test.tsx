@@ -1,20 +1,29 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RatingScale } from "../src/client/src/components/RatingScale";
 import { AdminPage } from "../src/client/src/pages/AdminPage";
+import { MapPage } from "../src/client/src/pages/MapPage";
 import { SurveyPage } from "../src/client/src/pages/SurveyPage";
 import { colorForAverage, parsePaletteText } from "../src/client/src/lib/colorScale";
 import { aggregateToPlzLevel, joinAggregates, plzLevelForZoom } from "../src/client/src/lib/plzJoin";
 import { isValidPostalCode } from "../src/client/src/lib/validation";
 
+vi.mock("../src/client/src/components/GermanyPlzMap", () => ({
+  GermanyPlzMap: ({ aggregates }: { aggregates: Array<{ count: number }> }) => (
+    <div data-testid="mock-map">{aggregates.reduce((sum, item) => sum + item.count, 0)}</div>
+  )
+}));
+
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   localStorage.clear();
 });
 
 function jsonResponse(data: unknown) {
   return {
     ok: true,
+    json: async () => data,
     text: async () => JSON.stringify(data)
   };
 }
@@ -24,6 +33,76 @@ function textResponse(text: string) {
     ok: true,
     text: async () => text
   };
+}
+
+class FakeEventSource {
+  static instances: FakeEventSource[] = [];
+
+  onerror: (() => void) | null = null;
+  readonly listeners = new Map<string, Array<(event: MessageEvent<string>) => void>>();
+  readonly url: string;
+
+  constructor(url: string) {
+    this.url = url;
+    FakeEventSource.instances.push(this);
+  }
+
+  addEventListener(event: string, handler: (event: MessageEvent<string>) => void) {
+    this.listeners.set(event, [...(this.listeners.get(event) ?? []), handler]);
+  }
+
+  close() {
+    // jsdom test double: no transport to close.
+  }
+
+  emit(event: string, payload: unknown) {
+    for (const handler of this.listeners.get(event) ?? []) {
+      handler({ data: JSON.stringify(payload) } as MessageEvent<string>);
+    }
+  }
+}
+
+function mapFetchMock(results: Array<unknown>) {
+  let resultIndex = 0;
+  const plzData = {
+    type: "FeatureCollection",
+    features: [{
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [13.4, 52.5] },
+      properties: { postal_code: "10115" }
+    }]
+  };
+
+  return vi.fn(async (path: string) => {
+    if (path === "/api/survey/active") {
+      return jsonResponse({
+        id: "active",
+        title: "Map survey",
+        question_text: "Rate it",
+        min_rating: -3,
+        max_rating: 3,
+        rating_labels: {},
+        pages: [{
+          id: "page-1",
+          title: "Page 1",
+          questions: [{ id: "q-1", text: "Rate it", min_rating: -3, max_rating: 3, rating_labels: {} }]
+        }],
+        terms_enabled: false,
+        terms_text: "",
+        use_aggregated_shapes: false,
+        map_palette: "batlow",
+        is_active: true
+      });
+    }
+    if (path === "/data/germany-plz.topojson") return jsonResponse(plzData);
+    if (path === "/data/gradients/batlow.txt") return textResponse("0 0 0\n1 1 1");
+    if (path === "/api/results/active") {
+      const result = results[Math.min(resultIndex, results.length - 1)];
+      resultIndex += 1;
+      return jsonResponse(result);
+    }
+    throw new Error(`Unexpected fetch ${path}`);
+  });
 }
 
 function adminFetchMock(responses: Array<unknown | ((path: string, options?: RequestInit) => unknown)>) {
@@ -380,6 +459,71 @@ describe("frontend survey controls", () => {
 
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Frontend/backend mismatch"));
     expect(screen.getByText("Question 2")).toBeInTheDocument();
+  });
+});
+
+describe("frontend map page", () => {
+  it("loads survey, PLZ shapes, palette, and aggregate results", async () => {
+    FakeEventSource.instances = [];
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const fetchMock = mapFetchMock([
+      [{ question_id: "q-1", aggregates: [{ question_id: "q-1", postal_code: "10115", count: 1, average: 2, sum: 2, hidden: false }] }]
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MapPage />);
+
+    expect(await screen.findByRole("heading", { name: "Rate it" })).toBeInTheDocument();
+    expect(await screen.findByTestId("mock-map")).toHaveTextContent("1");
+    expect(screen.getByText("1 responses")).toBeInTheDocument();
+    expect(screen.getByText("1 PLZ areas")).toBeInTheDocument();
+    expect(FakeEventSource.instances[0]?.url).toBe("/api/results/active/stream");
+    expect(fetchMock).toHaveBeenCalledWith("/data/germany-plz.topojson");
+    expect(fetchMock).toHaveBeenCalledWith("/data/gradients/batlow.txt");
+  });
+
+  it("refreshes result data manually without reloading PLZ shapes", async () => {
+    FakeEventSource.instances = [];
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const fetchMock = mapFetchMock([
+      [{ question_id: "q-1", aggregates: [{ question_id: "q-1", postal_code: "10115", count: 1, average: 2, sum: 2, hidden: false }] }],
+      [{ question_id: "q-1", aggregates: [{ question_id: "q-1", postal_code: "10115", count: 2, average: 3, sum: 6, hidden: false }] }]
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MapPage />);
+    expect(await screen.findByTestId("mock-map")).toHaveTextContent("1");
+
+    fireEvent.click(screen.getByRole("button", { name: /refresh results/i }));
+
+    await waitFor(() => expect(screen.getByTestId("mock-map")).toHaveTextContent("2"));
+    expect(screen.getByRole("status")).toHaveTextContent("Results updated.");
+    expect(fetchMock.mock.calls.filter(([path]) => path === "/api/results/active")).toHaveLength(2);
+    expect(fetchMock.mock.calls.filter(([path]) => path === "/data/germany-plz.topojson")).toHaveLength(1);
+  });
+
+  it("uses SSE updates as result refresh triggers without reloading PLZ shapes", async () => {
+    FakeEventSource.instances = [];
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const fetchMock = mapFetchMock([
+      [{ question_id: "q-1", aggregates: [{ question_id: "q-1", postal_code: "10115", count: 1, average: 2, sum: 2, hidden: false }] }],
+      [{ question_id: "q-1", aggregates: [{ question_id: "q-1", postal_code: "10115", count: 3, average: 1, sum: 3, hidden: false }] }]
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MapPage />);
+    expect(await screen.findByTestId("mock-map")).toHaveTextContent("1");
+
+    act(() => {
+      FakeEventSource.instances[0].emit("aggregate-update", {
+        type: "aggregate-update",
+        survey_id: "active"
+      });
+    });
+
+    await waitFor(() => expect(screen.getByTestId("mock-map")).toHaveTextContent("3"));
+    expect(fetchMock.mock.calls.filter(([path]) => path === "/api/results/active")).toHaveLength(2);
+    expect(fetchMock.mock.calls.filter(([path]) => path === "/data/germany-plz.topojson")).toHaveLength(1);
   });
 });
 
