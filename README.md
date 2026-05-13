@@ -45,7 +45,7 @@ Set `ADMIN_PASSWORD` in a local `.env` file or server environment to protect the
 
 ## PLZ Data
 
-The app loads PLZ polygons from `public/data/germany-plz.topojson`. If that plain file is not present, both the Vite dev server and the production Fastify server serve `public/data/germany-plz.topojson.br` at the same URL with Brotli content encoding.
+The app loads PLZ polygons from `public/data/germany-plz.topojson.json` and lower-detail LOD files named `public/data/germany-plz-1.topojson.json` through `public/data/germany-plz-4.topojson.json`.
 
 Recommended MVP source: [`yetzt/postleitzahlen`](https://github.com/yetzt/postleitzahlen), which publishes German postcode areas in compressed GeoJSON/TopoJSON formats derived from OpenStreetMap.
 
@@ -57,11 +57,11 @@ npm run prepare:plz -- data/source-plz.geojson
 
 The script detects `postal_code`, `plz`, `postcode`, or `name`, extracts a 5-digit PLZ, rewrites each feature to `properties.postal_code`, quantizes the topology, and generates:
 
-- `public/data/germany-plz.topojson`
-- `public/data/germany-plz.topojson.br`
+- `public/data/germany-plz.topojson.json`
+- `public/data/germany-plz-1.topojson.json` through `public/data/germany-plz-4.topojson.json`
 - `public/data/postal-codes.json`
 
-When `data/source-plz.geojson` is absent, the script can bootstrap from `public/data/germany-plz.topojson.br`.
+When `data/source-plz.geojson` is absent, the script can bootstrap from `public/data/germany-plz.topojson.json`.
 
 ## Privacy And Map Notes
 

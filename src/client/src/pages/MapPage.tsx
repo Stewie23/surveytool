@@ -123,7 +123,7 @@ export function MapPage() {
       setSelectedQuestionId(activeQuestions[0]?.id ?? "");
       const initialPlzPath = activeSurvey.use_aggregated_shapes
         ? "/data/germany-plz-1.topojson.json"
-        : "/data/germany-plz.topojson";
+        : "/data/germany-plz.topojson.json";
       const [plz] = await Promise.all([
         fetch(initialPlzPath).then((response) => response.json()).then(toFeatureCollection),
         loadResults(activeSurvey.id, activeQuestions)

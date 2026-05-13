@@ -95,7 +95,7 @@ function mapFetchMock(results: Array<unknown>, useAggregatedShapes = false) {
         is_active: true
       });
     }
-    if (path === "/data/germany-plz.topojson") return jsonResponse(plzData);
+    if (path === "/data/germany-plz.topojson.json") return jsonResponse(plzData);
     if (path === "/data/germany-plz-1.topojson.json") return jsonResponse(plzData);
     if (path === "/data/gradients/batlow.txt") return textResponse("0 0 0\n1 1 1");
     if (path === "/api/results/active") {
@@ -480,7 +480,7 @@ describe("frontend map page", () => {
     expect(screen.getByText("1 responses")).toBeInTheDocument();
     expect(screen.getByText("1 PLZ areas")).toBeInTheDocument();
     expect(FakeEventSource.instances[0]?.url).toBe("/api/results/active/stream");
-    expect(fetchMock).toHaveBeenCalledWith("/data/germany-plz.topojson");
+    expect(fetchMock).toHaveBeenCalledWith("/data/germany-plz.topojson.json");
     expect(fetchMock).toHaveBeenCalledWith("/data/gradients/batlow.txt");
   });
 
@@ -515,7 +515,7 @@ describe("frontend map page", () => {
     await waitFor(() => expect(screen.getByTestId("mock-map")).toHaveTextContent("2"));
     expect(screen.getByRole("status")).toHaveTextContent("Results updated.");
     expect(fetchMock.mock.calls.filter(([path]) => path === "/api/results/active")).toHaveLength(2);
-    expect(fetchMock.mock.calls.filter(([path]) => path === "/data/germany-plz.topojson")).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([path]) => path === "/data/germany-plz.topojson.json")).toHaveLength(1);
   });
 
   it("uses SSE updates as result refresh triggers without reloading PLZ shapes", async () => {
@@ -539,7 +539,7 @@ describe("frontend map page", () => {
 
     await waitFor(() => expect(screen.getByTestId("mock-map")).toHaveTextContent("3"));
     expect(fetchMock.mock.calls.filter(([path]) => path === "/api/results/active")).toHaveLength(2);
-    expect(fetchMock.mock.calls.filter(([path]) => path === "/data/germany-plz.topojson")).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([path]) => path === "/data/germany-plz.topojson.json")).toHaveLength(1);
   });
 
   it("refreshes result data on window focus without reloading PLZ shapes", async () => {
@@ -560,7 +560,7 @@ describe("frontend map page", () => {
 
     await waitFor(() => expect(screen.getByTestId("mock-map")).toHaveTextContent("4"));
     expect(fetchMock.mock.calls.filter(([path]) => path === "/api/results/active")).toHaveLength(2);
-    expect(fetchMock.mock.calls.filter(([path]) => path === "/data/germany-plz.topojson")).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([path]) => path === "/data/germany-plz.topojson.json")).toHaveLength(1);
   });
 });
 

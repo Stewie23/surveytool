@@ -25,8 +25,11 @@ const sourcePathByLevel: Record<PlzLevel, string> = {
   2: "/data/germany-plz-2.topojson.json",
   3: "/data/germany-plz-3.topojson.json",
   4: "/data/germany-plz-4.topojson.json",
-  5: "/data/germany-plz.topojson"
+  5: "/data/germany-plz.topojson.json"
 };
+const initialZoomOutFactor = 1.5;
+const initialZoomOutLevels = Math.log2(initialZoomOutFactor);
+const mapFitPadding = { top: 20, right: 36, bottom: 132, left: 36 };
 
 function visitCoordinates(value: unknown, extend: (position: GeoJSON.Position) => void) {
   if (!Array.isArray(value)) return;
@@ -61,7 +64,7 @@ function calculateBounds(
   return hasCoordinates ? bounds : undefined;
 }
 
-function expandBounds(bounds: maplibregl.LngLatBounds, paddingRatio = 0.18): LngLatBoundsLike {
+function expandBounds(bounds: maplibregl.LngLatBounds, paddingRatio = 1.5): LngLatBoundsLike {
   const west = bounds.getWest();
   const east = bounds.getEast();
   const south = bounds.getSouth();
@@ -150,8 +153,9 @@ export function GermanyPlzMap({ plzData, aggregates, survey, palette }: Props) {
       bounds,
       center: bounds ? undefined : [10.45, 51.16],
       zoom: bounds ? undefined : 5,
-      fitBoundsOptions: { padding: 36, duration: 0 },
+      fitBoundsOptions: { padding: mapFitPadding, duration: 0 },
       maxBounds,
+      minZoom: 2,
       bearing: 0,
       pitch: 0,
       minPitch: 0,
@@ -170,7 +174,7 @@ export function GermanyPlzMap({ plzData, aggregates, survey, palette }: Props) {
 
     map.on("load", () => {
       if (bounds) {
-        map.zoomTo(map.getZoom() - 20, { duration: 0 });
+        map.zoomTo(map.getZoom() - initialZoomOutLevels, { duration: 0 });
       }
 
       map.addSource("plz", { type: "geojson", data: initialMapDataRef.current });

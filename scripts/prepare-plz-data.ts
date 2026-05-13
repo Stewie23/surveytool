@@ -20,11 +20,10 @@ type FeatureCollection = {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const defaultInput = path.join(rootDir, "data", "source-plz.geojson");
-const fallbackInput = path.join(rootDir, "public", "data", "germany-plz.topojson.br");
+const fallbackInput = path.join(rootDir, "public", "data", "germany-plz.topojson.json");
 const sourcePath = path.resolve(process.argv[2] ?? (fs.existsSync(defaultInput) ? defaultInput : fallbackInput));
-const outTopoJson = path.join(rootDir, "public", "data", "germany-plz.topojson");
+const outTopoJson = path.join(rootDir, "public", "data", "germany-plz.topojson.json");
 const outPostalCodes = path.join(rootDir, "public", "data", "postal-codes.json");
-const mirrorTopoJson = path.join(rootDir, "data", "germany-plz.topojson");
 const mirrorPostalCodes = path.join(rootDir, "data", "postal-codes.json");
 const prefixLevels = [1, 2, 3, 4] as const;
 
@@ -95,28 +94,8 @@ function detectPostalCode(properties: Record<string, unknown> | undefined): stri
   return null;
 }
 
-function compressJson(json: string): Buffer {
-  return zlib.brotliCompressSync(Buffer.from(json), {
-    params: {
-      [zlib.constants.BROTLI_PARAM_QUALITY]: 11
-    }
-  });
-}
-
-function writeTopoJsonPair(publicPath: string, mirrorPath: string, json: string): void {
-  const compressed = compressJson(json);
-  fs.writeFileSync(publicPath, json);
-  fs.writeFileSync(`${publicPath}.br`, compressed);
-  fs.writeFileSync(mirrorPath, json);
-  fs.writeFileSync(`${mirrorPath}.br`, compressed);
-}
-
-function prefixTopoJsonPath(level: number, baseDir: string): string {
-  return path.join(baseDir, `germany-plz-${level}.topojson`);
-}
-
-function legacyPrefixTopoJsonPath(level: number, baseDir: string): string {
-  return path.join(baseDir, `germany-plz-prefix-${level}.topojson`);
+function levelTopoJsonPath(level: number): string {
+  return path.join(rootDir, "public", "data", `germany-plz-${level}.topojson.json`);
 }
 
 function buildPrefixCollection(topo: Topology, sortedCodes: string[]): FeatureCollection[] {
@@ -407,7 +386,7 @@ function normalize(collection: FeatureCollection): void {
   }
 
   fs.mkdirSync(path.dirname(outTopoJson), { recursive: true });
-  fs.mkdirSync(path.dirname(mirrorTopoJson), { recursive: true });
+  fs.mkdirSync(path.dirname(mirrorPostalCodes), { recursive: true });
 
   const normalized = {
     type: "FeatureCollection",
@@ -418,7 +397,7 @@ function normalize(collection: FeatureCollection): void {
   const sortedCodes = [...postalCodes].sort();
   const topoJson = `${JSON.stringify(topo)}\n`;
 
-  writeTopoJsonPair(outTopoJson, mirrorTopoJson, topoJson);
+  fs.writeFileSync(outTopoJson, topoJson);
   fs.writeFileSync(outPostalCodes, `${JSON.stringify(sortedCodes, null, 2)}\n`);
   fs.writeFileSync(mirrorPostalCodes, `${JSON.stringify(sortedCodes, null, 2)}\n`);
 
@@ -427,17 +406,11 @@ function normalize(collection: FeatureCollection): void {
     const level = prefixLevels[index];
     const prefixTopo = topology({ postal_code_prefixes: prefixCollection }, quantization);
     const prefixTopoJson = `${JSON.stringify(prefixTopo)}\n`;
-    for (const pathForLevel of [prefixTopoJsonPath, legacyPrefixTopoJsonPath]) {
-      writeTopoJsonPair(
-        pathForLevel(level, path.join(rootDir, "public", "data")),
-        pathForLevel(level, path.join(rootDir, "data")),
-        prefixTopoJson
-      );
-    }
+    fs.writeFileSync(levelTopoJsonPath(level), prefixTopoJson);
   }
 
   console.log(`Generated ${features.length} PLZ polygons and ${sortedCodes.length} postal codes with ${quantization} quantization.`);
-  console.log(`Generated PLZ prefix TopoJSON levels ${prefixLevels.join(", ")} in public/data and data mirrors.`);
+  console.log(`Generated PLZ TopoJSON LOD levels ${prefixLevels.join(", ")} in public/data.`);
 }
 
 normalize(readSource(sourcePath));
