@@ -25,8 +25,8 @@ button {
   border-radius: 6px;
   color: #172033;
   cursor: pointer;
-  min-height: 40px;
-  padding: 0 14px;
+  min-height: 36px;
+  padding: 0 12px;
 }
 
 button:hover {
@@ -57,16 +57,27 @@ button:disabled {
 
 .top-nav {
   align-items: center;
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.92);
   border-bottom: 1px solid #dbe3ee;
   display: flex;
+  gap: 14px;
   justify-content: space-between;
-  padding: 14px 24px;
+  padding: 6px 18px;
 }
 
 .top-nav div {
   display: flex;
-  gap: 8px;
+  gap: 6px;
+}
+
+.top-nav strong {
+  font-size: 0.86rem;
+}
+
+.top-nav button {
+  font-size: 0.82rem;
+  min-height: 28px;
+  padding: 0 10px;
 }
 
 .panel {
@@ -76,9 +87,9 @@ button:disabled {
 }
 
 .map-page {
-  margin: 16px auto;
-  max-width: 1360px;
-  padding: 0 24px;
+  margin: 0 auto;
+  max-width: none;
+  padding: 8px 12px 12px;
 }
 
 .survey-panel,
@@ -101,9 +112,9 @@ button:disabled {
 }
 
 h1 {
-  font-size: clamp(1.65rem, 2vw, 2.35rem);
+  font-size: clamp(1.55rem, 1.8vw, 2.1rem);
   line-height: 1.15;
-  margin: 0 0 14px;
+  margin: 0 0 10px;
 }
 
 .question {
@@ -133,8 +144,8 @@ select,
 textarea {
   border: 1px solid #cbd5e1;
   border-radius: 6px;
-  min-height: 42px;
-  padding: 9px 11px;
+  min-height: 38px;
+  padding: 8px 10px;
   width: 100%;
 }
 
@@ -241,7 +252,7 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: 18px;
+  margin-top: 0;
 }
 
 .stats span {
@@ -249,7 +260,7 @@ textarea {
   border: 1px solid #dbe3ee;
   border-radius: 6px;
   color: #334155;
-  padding: 8px 10px;
+  padding: 7px 10px;
 }
 
 .admin-tools {
@@ -390,25 +401,27 @@ textarea {
 }
 
 .map-header {
-  align-items: end;
-  display: flex;
-  gap: 24px;
-  justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
-.map-content {
-  align-items: start;
-  display: grid;
-  gap: 16px;
-  grid-template-columns: minmax(0, 1fr) 144px;
+.map-title {
+  min-width: 0;
+}
+
+.map-title h1 {
+  font-size: clamp(1.25rem, 1.45vw, 1.75rem);
+  margin-bottom: 0;
+}
+
+.map-stage {
+  position: relative;
 }
 
 .map-wrap {
   border: 1px solid #cbd5e1;
   border-radius: 8px;
-  height: calc(100vh - 160px);
-  min-height: 620px;
+  height: calc(100vh - 92px);
+  min-height: 660px;
   overflow: hidden;
   position: relative;
 }
@@ -437,6 +450,77 @@ textarea {
   display: grid;
   gap: 10px;
   margin-top: 0;
+}
+
+.map-overlay {
+  background: rgba(247, 249, 254, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.68);
+  border-radius: 12px;
+  box-shadow: 0 12px 26px rgba(23, 32, 51, 0.14);
+  display: grid;
+  gap: 10px;
+  left: 16px;
+  max-width: min(360px, calc(100% - 32px));
+  padding: 14px;
+  position: absolute;
+  top: 16px;
+  width: 340px;
+  z-index: 4;
+}
+
+.map-overlay .field,
+.map-controls {
+  align-items: stretch;
+  display: grid;
+}
+
+.map-controls {
+  gap: 10px;
+}
+
+.map-overlay .field,
+.map-controls .field {
+  gap: 5px;
+}
+
+.map-overlay .stats,
+.map-controls .stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.map-overlay .stats {
+  gap: 8px;
+}
+
+.map-overlay .stats span {
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 0.86rem;
+  padding: 7px 8px;
+}
+
+.map-overlay button,
+.map-overlay select {
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.map-overlay button {
+  min-height: 34px;
+}
+
+.map-overlay .legend {
+  border-top: 1px solid rgba(115, 119, 132, 0.24);
+  padding-top: 10px;
+}
+
+.map-controls .stats span,
+.map-controls button,
+.map-overlay .stats span,
+.map-overlay button {
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .legend span {
@@ -477,15 +561,21 @@ textarea {
 .legend .hidden { background: #9ca3af; }
 
 @media (max-width: 720px) {
-  .top-nav,
-  .map-header {
-    align-items: stretch;
-    flex-direction: column;
+  .top-nav {
+    align-items: center;
+    padding: 6px 10px;
+  }
+
+  .top-nav strong {
+    max-width: 84px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .top-nav div {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    flex: 1;
+    justify-content: end;
   }
 
   .admin-grid {
@@ -508,16 +598,27 @@ textarea {
     display: grid;
   }
 
-  .map-content {
-    grid-template-columns: 1fr;
+  .map-page {
+    padding: 8px;
   }
 
   .map-wrap {
-    height: calc(100vh - 250px);
-    min-height: 460px;
+    height: calc(100vh - 114px);
+    min-height: 520px;
   }
 
-  .legend {
+  .map-overlay {
+    bottom: 12px;
+    left: 12px;
+    max-height: min(48vh, 340px);
+    max-width: calc(100% - 24px);
+    overflow: auto;
+    padding: 12px;
+    top: auto;
+    width: calc(100% - 24px);
+  }
+
+  .map-overlay .legend {
     display: flex;
     flex-wrap: wrap;
   }

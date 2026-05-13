@@ -198,11 +198,14 @@ export function MapPage() {
   return (
     <section className="map-page">
       <div className="map-header">
-        <div>
+        <div className="map-title">
           <p className="eyebrow">Live results</p>
           <h1>{selectedQuestion.text}</h1>
         </div>
-        <div className="map-controls">
+      </div>
+      <div className="map-stage">
+        <GermanyPlzMap plzData={plzData} aggregates={aggregates} survey={mapSurvey} palette={palette} />
+        <div className="map-overlay" aria-label="Map controls and legend">
           <label className="field">
             <span>Question</span>
             <select value={selectedQuestion.id} onChange={(event) => setSelectedQuestionId(event.target.value)}>
@@ -218,11 +221,8 @@ export function MapPage() {
           <button type="button" onClick={() => void refreshResults(true)} disabled={isRefreshing}>
             {isRefreshing ? "Refreshing..." : "Refresh results"}
           </button>
+          <MapLegend palette={palette} />
         </div>
-      </div>
-      <div className="map-content">
-        <GermanyPlzMap plzData={plzData} aggregates={aggregates} survey={mapSurvey} palette={palette} />
-        <MapLegend palette={palette} />
       </div>
       {status ? <p role="status" className="notice">{status}</p> : null}
     </section>
