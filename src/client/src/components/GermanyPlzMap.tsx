@@ -75,11 +75,13 @@ function expandBounds(bounds: maplibregl.LngLatBounds, paddingRatio = 0.18): Lng
 }
 
 export function GermanyPlzMap({ plzData, aggregates, survey }: Props) {
+  const useAggregatedShapes = survey.use_aggregated_shapes ?? false;
+  const initialLevel: PlzLevel = useAggregatedShapes ? 1 : 5;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const shapeCacheRef = useRef(new Map<PlzLevel, GeoJSON.FeatureCollection<GeoJSON.Geometry, Record<string, unknown>>>([[1, plzData]]));
+  const shapeCacheRef = useRef(new Map<PlzLevel, GeoJSON.FeatureCollection<GeoJSON.Geometry, Record<string, unknown>>>([[initialLevel, plzData]]));
   const loadRequestRef = useRef(0);
-  const [activeLevel, setActiveLevel] = useState<PlzLevel>(1);
+  const [activeLevel, setActiveLevel] = useState<PlzLevel>(initialLevel);
   const [activePlzData, setActivePlzData] = useState(plzData);
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const joined = useMemo(() => joinAggregates(activePlzData, aggregates, activeLevel), [activePlzData, activeLevel, aggregates]);
@@ -192,6 +194,7 @@ export function GermanyPlzMap({ plzData, aggregates, survey }: Props) {
       map.on("mouseleave", "plz-fill", () => setHover(null));
     });
     map.on("zoomend", () => {
+      if (!useAggregatedShapes) return;
       const nextLevel = plzLevelForZoom(map.getZoom());
       void loadPlzLevel(nextLevel).catch((error) => console.error(error));
     });

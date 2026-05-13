@@ -63,7 +63,8 @@ function normalizeSurvey(survey: PagedSurvey): PagedSurvey {
     ...survey,
     pages,
     terms_enabled: survey.terms_enabled ?? false,
-    terms_text: survey.terms_text ?? ""
+    terms_text: survey.terms_text ?? "",
+    use_aggregated_shapes: survey.use_aggregated_shapes ?? false
   };
 }
 
@@ -161,6 +162,7 @@ export function AdminPage() {
         pages: survey.pages,
         terms_enabled: survey.terms_enabled ?? false,
         terms_text: survey.terms_text ?? "",
+        use_aggregated_shapes: survey.use_aggregated_shapes ?? false,
         is_active: survey.is_active ?? true
       };
 
@@ -327,6 +329,13 @@ export function AdminPage() {
             setSurvey((current) => current ? { ...current, is_active: isActive } : current);
           }} />
           Active
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={survey.use_aggregated_shapes ?? false} onChange={(event) => {
+            const useAggregatedShapes = event.target.checked;
+            setSurvey((current) => current ? { ...current, use_aggregated_shapes: useAggregatedShapes } : current);
+          }} />
+          Use aggregated shapes
         </label>
 
         <div className="wide page-builder">

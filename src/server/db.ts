@@ -33,6 +33,7 @@ export function migrate(db: Db): void {
       pages TEXT NOT NULL DEFAULT '[]',
       terms_enabled INTEGER NOT NULL DEFAULT 0,
       terms_text TEXT NOT NULL DEFAULT '',
+      use_aggregated_shapes INTEGER NOT NULL DEFAULT 0,
       is_active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -101,6 +102,9 @@ export function migrate(db: Db): void {
   if (!surveyColumns.some((column) => column.name === "terms_text")) {
     db.exec("ALTER TABLE surveys ADD COLUMN terms_text TEXT NOT NULL DEFAULT ''");
   }
+  if (!surveyColumns.some((column) => column.name === "use_aggregated_shapes")) {
+    db.exec("ALTER TABLE surveys ADD COLUMN use_aggregated_shapes INTEGER NOT NULL DEFAULT 0");
+  }
 
   backfillSurveyPages(db);
   backfillNormalizedSurveyDefinitions(db);
@@ -130,8 +134,8 @@ export function seedDefaultSurvey(db: Db): void {
   const now = new Date().toISOString();
   db.prepare(`
     INSERT INTO surveys
-      (id, title, question_text, min_rating, max_rating, rating_labels, pages, terms_enabled, terms_text, is_active, created_at, updated_at)
-    VALUES (?, ?, ?, -3, 3, '{}', ?, 0, '', 1, ?, ?)
+      (id, title, question_text, min_rating, max_rating, rating_labels, pages, terms_enabled, terms_text, use_aggregated_shapes, is_active, created_at, updated_at)
+    VALUES (?, ?, ?, -3, 3, '{}', ?, 0, '', 0, 1, ?, ?)
   `).run(
     "default",
     "Stimmungsbild",

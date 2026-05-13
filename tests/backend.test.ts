@@ -38,6 +38,7 @@ describe("backend API", () => {
       id: "default",
       title: "Stimmungsbild",
       terms_enabled: false,
+      use_aggregated_shapes: false,
       pages: [{
         id: "default-page",
         questions: [{
@@ -68,6 +69,7 @@ describe("backend API", () => {
     expect(response.json()).toMatchObject({
       id: "legacy",
       title: "Legacy survey",
+      use_aggregated_shapes: false,
       pages: [{
         title: "Legacy survey",
         questions: [{
@@ -128,6 +130,7 @@ describe("backend API", () => {
         }],
         terms_enabled: true,
         terms_text: "Please accept",
+        use_aggregated_shapes: true,
         is_active: true
       }
     });
@@ -136,6 +139,7 @@ describe("backend API", () => {
       title: "New",
       terms_enabled: true,
       terms_text: "Please accept",
+      use_aggregated_shapes: true,
       pages: [{
         id: "page-1",
         questions: [{

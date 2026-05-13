@@ -57,7 +57,8 @@ export const adminSurveySchema = z.object({
   pages: z.array(pageSchema).min(1),
   is_active: z.boolean().default(true),
   terms_enabled: z.boolean().default(false),
-  terms_text: z.string().trim().max(5000).default("")
+  terms_text: z.string().trim().max(5000).default(""),
+  use_aggregated_shapes: z.boolean().default(false)
 }).superRefine((value, ctx) => {
   const pageIds = new Set<string>();
   const questionIds = new Set<string>();

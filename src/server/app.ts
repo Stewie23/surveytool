@@ -21,6 +21,7 @@ type SurveyRow = {
   pages: string;
   terms_enabled: number;
   terms_text: string;
+  use_aggregated_shapes: number;
   is_active: number;
 };
 
@@ -94,8 +95,8 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
       }
       db.prepare(`
         INSERT INTO surveys
-          (id, title, question_text, min_rating, max_rating, rating_labels, pages, terms_enabled, terms_text, is_active, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, title, question_text, min_rating, max_rating, rating_labels, pages, terms_enabled, terms_text, use_aggregated_shapes, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           title = excluded.title,
           question_text = excluded.question_text,
@@ -105,6 +106,7 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
           pages = excluded.pages,
           terms_enabled = excluded.terms_enabled,
           terms_text = excluded.terms_text,
+          use_aggregated_shapes = excluded.use_aggregated_shapes,
           is_active = excluded.is_active,
           updated_at = excluded.updated_at
       `).run(
@@ -117,6 +119,7 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
         pagesJson,
         parsed.data.terms_enabled ? 1 : 0,
         parsed.data.terms_text,
+        parsed.data.use_aggregated_shapes ? 1 : 0,
         parsed.data.is_active ? 1 : 0,
         now,
         now
@@ -350,6 +353,7 @@ function serializeSurvey(db: Db, survey: SurveyRow) {
     pages,
     terms_enabled: Boolean(survey.terms_enabled),
     terms_text: survey.terms_text,
+    use_aggregated_shapes: Boolean(survey.use_aggregated_shapes),
     question_text: firstQuestion?.text ?? survey.question_text,
     min_rating: firstQuestion?.min_rating ?? survey.min_rating,
     max_rating: firstQuestion?.max_rating ?? survey.max_rating,

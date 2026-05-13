@@ -4,6 +4,7 @@ export type Survey = {
   pages: SurveyPage[];
   terms_enabled: boolean;
   terms_text: string;
+  use_aggregated_shapes: boolean;
   is_active?: boolean;
   question_text?: string;
   min_rating?: number;

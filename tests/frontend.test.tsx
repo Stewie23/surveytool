@@ -174,6 +174,7 @@ describe("frontend survey controls", () => {
 
     render(<AdminPage />);
     expect(await screen.findByText("Survey settings")).toBeInTheDocument();
+    expect(screen.getByLabelText(/use aggregated shapes/i)).not.toBeChecked();
 
     fireEvent.change(screen.getByLabelText(/page title/i), { target: { value: "Intro" } });
     fireEvent.change(screen.getByPlaceholderText("Strongly agree"), { target: { value: "Agree strongly" } });
@@ -193,6 +194,7 @@ describe("frontend survey controls", () => {
       rating_labels: { "3": "Agree strongly" },
       terms_enabled: true,
       terms_text: "Terms go here",
+      use_aggregated_shapes: false,
       is_active: true
     });
     expect(saveBody.pages).toHaveLength(2);
