@@ -11,6 +11,7 @@ import { checkResponseRateLimit } from "./rateLimit.js";
 import { adminSurveySchema, randomResponsesSchema, responseSchema, surveyIdParamsSchema } from "./schemas.js";
 import { SseHub } from "./sse.js";
 import { DEFAULT_MAP_PALETTE, isMapPaletteId } from "../shared/mapPalettes.js";
+import type { MapLodLevel } from "../shared/types.js";
 
 type SurveyRow = {
   id: string;
@@ -20,9 +21,12 @@ type SurveyRow = {
   max_rating: number;
   rating_labels: string;
   pages: string;
+  start_text?: string;
+  start_logo_data_url?: string;
   terms_enabled: number;
   terms_text: string;
   use_aggregated_shapes: number;
+  map_lod_levels?: string;
   map_palette?: string;
   is_active: number;
 };
@@ -126,8 +130,8 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
       }
       db.prepare(`
         INSERT INTO surveys
-          (id, title, question_text, min_rating, max_rating, rating_labels, pages, terms_enabled, terms_text, use_aggregated_shapes, map_palette, is_active, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, title, question_text, min_rating, max_rating, rating_labels, pages, start_text, start_logo_data_url, terms_enabled, terms_text, use_aggregated_shapes, map_lod_levels, map_palette, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           title = excluded.title,
           question_text = excluded.question_text,
@@ -135,9 +139,12 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
           max_rating = excluded.max_rating,
           rating_labels = excluded.rating_labels,
           pages = excluded.pages,
+          start_text = excluded.start_text,
+          start_logo_data_url = excluded.start_logo_data_url,
           terms_enabled = excluded.terms_enabled,
           terms_text = excluded.terms_text,
           use_aggregated_shapes = excluded.use_aggregated_shapes,
+          map_lod_levels = excluded.map_lod_levels,
           map_palette = excluded.map_palette,
           is_active = excluded.is_active,
           updated_at = excluded.updated_at
@@ -149,9 +156,12 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
         firstQuestion.max_rating,
         JSON.stringify(firstQuestion.rating_labels),
         pagesJson,
+        parsed.data.start_text,
+        parsed.data.start_logo_data_url,
         parsed.data.terms_enabled ? 1 : 0,
         parsed.data.terms_text,
         parsed.data.use_aggregated_shapes ? 1 : 0,
+        JSON.stringify(parsed.data.map_lod_levels),
         parsed.data.map_palette,
         parsed.data.is_active ? 1 : 0,
         now,
@@ -384,9 +394,12 @@ function serializeSurvey(db: Db, survey: SurveyRow) {
     id: survey.id,
     title: survey.title,
     pages,
+    start_text: survey.start_text ?? "",
+    start_logo_data_url: survey.start_logo_data_url ?? "",
     terms_enabled: Boolean(survey.terms_enabled),
     terms_text: survey.terms_text,
     use_aggregated_shapes: Boolean(survey.use_aggregated_shapes),
+    map_lod_levels: parseMapLodLevels(survey.map_lod_levels, Boolean(survey.use_aggregated_shapes)),
     map_palette: survey.map_palette && isMapPaletteId(survey.map_palette) ? survey.map_palette : DEFAULT_MAP_PALETTE,
     question_text: firstQuestion?.text ?? survey.question_text,
     min_rating: firstQuestion?.min_rating ?? survey.min_rating,
@@ -394,6 +407,22 @@ function serializeSurvey(db: Db, survey: SurveyRow) {
     rating_labels: firstQuestion?.rating_labels ?? parseRatingLabels(survey.rating_labels),
     is_active: Boolean(survey.is_active)
   };
+}
+
+function parseMapLodLevels(value: string | null | undefined, useAggregatedShapes: boolean): MapLodLevel[] {
+  const fallback: MapLodLevel[] = useAggregatedShapes ? [1, 2, 3, 4, 5] : [5];
+  if (!value) return fallback;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return fallback;
+    const levels = parsed.filter((level): level is MapLodLevel =>
+      level === 1 || level === 2 || level === 3 || level === 4 || level === 5
+    );
+    const unique = Array.from(new Set(levels));
+    return unique.length > 0 ? unique : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 function getQuestions(db: Db, survey: SurveyRow): SurveyQuestion[] {

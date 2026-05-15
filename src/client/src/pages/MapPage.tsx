@@ -13,7 +13,7 @@ import {
   type QuestionAggregate,
   type SurveyQuestion
 } from "../lib/api";
-import { toFeatureCollection } from "../lib/plzJoin";
+import { coarsestPlzLevel, normalizePlzLevels, plzSourcePath, toFeatureCollection } from "../lib/plzJoin";
 
 const RESULTS_REFRESH_INTERVAL_MS = 5000;
 
@@ -121,9 +121,8 @@ export function MapPage() {
       const activeQuestions = surveyQuestions(activeSurvey);
       setSurvey(activeSurvey);
       setSelectedQuestionId(activeQuestions[0]?.id ?? "");
-      const initialPlzPath = activeSurvey.use_aggregated_shapes
-        ? "/data/germany-plz-1.topojson.json"
-        : "/data/germany-plz.topojson.json";
+      const enabledLevels = normalizePlzLevels(activeSurvey.map_lod_levels, activeSurvey.use_aggregated_shapes);
+      const initialPlzPath = plzSourcePath(coarsestPlzLevel(enabledLevels));
       const [plz] = await Promise.all([
         fetch(initialPlzPath).then((response) => response.json()).then(toFeatureCollection),
         loadResults(activeSurvey.id, activeQuestions)

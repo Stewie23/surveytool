@@ -1,10 +1,15 @@
+export type MapLodLevel = 1 | 2 | 3 | 4 | 5;
+
 export type Survey = {
   id: string;
   title: string;
   pages: SurveyPage[];
   terms_enabled: boolean;
   terms_text: string;
+  start_text: string;
+  start_logo_data_url: string;
   use_aggregated_shapes: boolean;
+  map_lod_levels?: MapLodLevel[];
   map_palette?: string;
   is_active?: boolean;
   question_text?: string;

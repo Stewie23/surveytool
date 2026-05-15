@@ -2,7 +2,16 @@ import maplibregl, { type LngLatBoundsLike, type MapMouseEvent } from "maplibre-
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Aggregate, Survey } from "../../../shared/types";
 import { colorForAverage, type PaletteColor } from "../lib/colorScale";
-import { joinAggregates, plzLevelForZoom, toFeatureCollection, type PlzLevel } from "../lib/plzJoin";
+import {
+  coarsestPlzLevel,
+  joinAggregates,
+  nearestEnabledPlzLevel,
+  normalizePlzLevels,
+  plzLevelForZoom,
+  plzSourcePath,
+  toFeatureCollection,
+  type PlzLevel
+} from "../lib/plzJoin";
 
 type Props = {
   plzData: GeoJSON.FeatureCollection<GeoJSON.Geometry, Record<string, unknown>>;
@@ -20,13 +29,6 @@ type HoverInfo = {
   hidden: boolean;
 };
 
-const sourcePathByLevel: Record<PlzLevel, string> = {
-  1: "/data/germany-plz-1.topojson.json",
-  2: "/data/germany-plz-2.topojson.json",
-  3: "/data/germany-plz-3.topojson.json",
-  4: "/data/germany-plz-4.topojson.json",
-  5: "/data/germany-plz.topojson.json"
-};
 const initialZoomOutFactor = 1.5;
 const initialZoomOutLevels = Math.log2(initialZoomOutFactor);
 const mapFitPadding = { top: 20, right: 36, bottom: 132, left: 36 };
@@ -79,8 +81,11 @@ function expandBounds(bounds: maplibregl.LngLatBounds, paddingRatio = 1.5): LngL
 }
 
 export function GermanyPlzMap({ plzData, aggregates, survey, palette }: Props) {
-  const useAggregatedShapes = survey.use_aggregated_shapes ?? false;
-  const initialLevel: PlzLevel = useAggregatedShapes ? 1 : 5;
+  const enabledLevels = useMemo(
+    () => normalizePlzLevels(survey.map_lod_levels, survey.use_aggregated_shapes ?? false),
+    [survey.map_lod_levels, survey.use_aggregated_shapes]
+  );
+  const initialLevel: PlzLevel = coarsestPlzLevel(enabledLevels);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const shapeCacheRef = useRef(new Map<PlzLevel, GeoJSON.FeatureCollection<GeoJSON.Geometry, Record<string, unknown>>>([[initialLevel, plzData]]));
@@ -119,7 +124,7 @@ export function GermanyPlzMap({ plzData, aggregates, survey, palette }: Props) {
       return;
     }
 
-    const response = await fetch(sourcePathByLevel[level]);
+    const response = await fetch(plzSourcePath(level));
     if (!response.ok) {
       throw new Error(`Could not load PLZ${level} shapes`);
     }
@@ -200,8 +205,8 @@ export function GermanyPlzMap({ plzData, aggregates, survey, palette }: Props) {
       map.on("mouseleave", "plz-fill", () => setHover(null));
     });
     map.on("zoomend", () => {
-      if (!useAggregatedShapes) return;
-      const nextLevel = plzLevelForZoom(map.getZoom());
+      if (enabledLevels.length <= 1) return;
+      const nextLevel = nearestEnabledPlzLevel(plzLevelForZoom(map.getZoom()), enabledLevels);
       void loadPlzLevel(nextLevel).catch((error) => console.error(error));
     });
 

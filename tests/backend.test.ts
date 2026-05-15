@@ -41,6 +41,7 @@ describe("backend API", () => {
       title: "Stimmungsbild",
       terms_enabled: false,
       use_aggregated_shapes: false,
+      map_lod_levels: [5],
       map_palette: "batlow",
       pages: [{
         id: "default-page",
@@ -74,6 +75,7 @@ describe("backend API", () => {
       id: "legacy",
       title: "Legacy survey",
       use_aggregated_shapes: false,
+      map_lod_levels: [5],
       map_palette: "batlow",
       pages: [{
         title: "Legacy survey",
@@ -90,6 +92,30 @@ describe("backend API", () => {
     expect(tableExists("survey_questions")).toBe(true);
     expect(tableCount("survey_pages")).toBe(1);
     expect(tableCount("survey_questions")).toBe(1);
+  });
+
+  it("backfills map LOD levels from legacy aggregated-shapes rows", async () => {
+    const sqlitePath = tempSqlitePath();
+    await server.app.close();
+    createLegacyAggregatedSurveyDb(sqlitePath);
+    server = buildServer({
+      config: {
+        sqlitePath,
+        adminToken,
+        adminPassword,
+        minPublicResponsesPerPlz: 1,
+        responseRateLimitMax: 100
+      },
+      postalCodes
+    });
+
+    const response = await server.app.inject({ method: "GET", url: "/api/survey/active" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: "legacy-aggregated",
+      use_aggregated_shapes: true,
+      map_lod_levels: [1, 2, 3, 4, 5]
+    });
   });
 
   it("requires admin auth and validates survey ranges", async () => {
@@ -133,6 +159,8 @@ describe("backend API", () => {
             rating_labels: { "-5": "Strongly disagree", "5": "Strongly agree", "99": "Outside" }
           }]
         }],
+        start_text: "Welcome **cluster** participants.\n\nSecond paragraph.",
+        start_logo_data_url: "data:image/png;base64,aGVsbG8=",
         terms_enabled: true,
         terms_text: "Please accept",
         use_aggregated_shapes: true,
@@ -143,9 +171,12 @@ describe("backend API", () => {
     expect(accepted.statusCode).toBe(200);
     expect(accepted.json()).toMatchObject({
       title: "New",
+      start_text: "Welcome **cluster** participants.\n\nSecond paragraph.",
+      start_logo_data_url: "data:image/png;base64,aGVsbG8=",
       terms_enabled: true,
       terms_text: "Please accept",
       use_aggregated_shapes: true,
+      map_lod_levels: [1, 2, 3, 4, 5],
       map_palette: "tokyo",
       pages: [{
         id: "page-1",
@@ -156,6 +187,45 @@ describe("backend API", () => {
           rating_labels: { "-5": "Strongly disagree", "5": "Strongly agree" }
         }]
       }]
+    });
+  });
+
+  it("validates and persists explicit non-contiguous map LOD levels", async () => {
+    const basePayload = {
+      title: "LOD survey",
+      pages: [{ id: "page-1", title: "Page", questions: [{ id: "q1", text: "Q", min_rating: -3, max_rating: 3 }] }],
+      is_active: true
+    };
+
+    for (const map_lod_levels of [[], [5, 5], [0], [6]]) {
+      const rejected = await server.app.inject({
+        method: "POST",
+        url: "/api/admin/survey",
+        headers: { "x-admin-token": adminToken },
+        payload: { ...basePayload, map_lod_levels }
+      });
+      expect(rejected.statusCode).toBe(400);
+    }
+
+    const accepted = await server.app.inject({
+      method: "POST",
+      url: "/api/admin/survey",
+      headers: { "x-admin-token": adminToken },
+      payload: {
+        ...basePayload,
+        map_lod_levels: [5, 3, 1]
+      }
+    });
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json()).toMatchObject({
+      use_aggregated_shapes: true,
+      map_lod_levels: [5, 3, 1]
+    });
+
+    const response = await server.app.inject({ method: "GET", url: "/api/survey/active" });
+    expect(response.json()).toMatchObject({
+      use_aggregated_shapes: true,
+      map_lod_levels: [5, 3, 1]
     });
   });
 
@@ -694,6 +764,76 @@ describe("backend API", () => {
           (id, title, question_text, min_rating, max_rating, rating_labels, terms_enabled, terms_text, is_active, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, 0, '', 1, ?, ?)
       `).run("legacy", "Legacy survey", "Legacy question?", -2, 2, JSON.stringify({ "-2": "No", "2": "Yes" }), now, now);
+    } finally {
+      db.close();
+    }
+  }
+
+  function createLegacyAggregatedSurveyDb(sqlitePath: string): void {
+    const db = new DatabaseSync(sqlitePath);
+    try {
+      db.exec(`
+        CREATE TABLE surveys (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          question_text TEXT NOT NULL,
+          min_rating INTEGER NOT NULL DEFAULT -3,
+          max_rating INTEGER NOT NULL DEFAULT 3,
+          rating_labels TEXT NOT NULL DEFAULT '{}',
+          pages TEXT NOT NULL DEFAULT '[]',
+          terms_enabled INTEGER NOT NULL DEFAULT 0,
+          terms_text TEXT NOT NULL DEFAULT '',
+          use_aggregated_shapes INTEGER NOT NULL DEFAULT 0,
+          map_palette TEXT NOT NULL DEFAULT 'batlow',
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE postal_codes (
+          postal_code TEXT PRIMARY KEY,
+          source_name TEXT,
+          geometry_available INTEGER NOT NULL DEFAULT 1
+        );
+
+        CREATE TABLE responses (
+          id TEXT PRIMARY KEY,
+          survey_id TEXT NOT NULL,
+          postal_code TEXT NOT NULL,
+          rating INTEGER,
+          terms_accepted INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (survey_id) REFERENCES surveys(id)
+        );
+
+        CREATE TABLE postal_code_aggregates (
+          survey_id TEXT NOT NULL,
+          question_id TEXT NOT NULL DEFAULT 'default-question',
+          postal_code TEXT NOT NULL,
+          response_count INTEGER NOT NULL,
+          rating_sum INTEGER NOT NULL,
+          rating_avg REAL NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (survey_id, question_id, postal_code)
+        );
+      `);
+      const now = new Date().toISOString();
+      const pages = [{
+        id: "legacy-aggregated-page",
+        title: "Legacy aggregated survey",
+        questions: [{
+          id: "legacy-aggregated-question",
+          text: "Legacy aggregated question?",
+          min_rating: -3,
+          max_rating: 3,
+          rating_labels: {}
+        }]
+      }];
+      db.prepare(`
+        INSERT INTO surveys
+          (id, title, question_text, min_rating, max_rating, rating_labels, pages, terms_enabled, terms_text, use_aggregated_shapes, map_palette, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, -3, 3, '{}', ?, 0, '', 1, 'batlow', 1, ?, ?)
+      `).run("legacy-aggregated", "Legacy aggregated survey", "Legacy aggregated question?", JSON.stringify(pages), now, now);
     } finally {
       db.close();
     }

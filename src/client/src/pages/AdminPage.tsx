@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { DEFAULT_MAP_PALETTE, MAP_PALETTE_IDS } from "../../../shared/mapPalettes";
+import type { MapLodLevel } from "../../../shared/types";
 import { RatingScale } from "../components/RatingScale";
 import { apiGet, apiPost, getActiveSurvey, type PagedSurvey, type SurveyPageConfig, type SurveyQuestion } from "../lib/api";
 import { paletteGradient, parsePaletteText, type PaletteColor } from "../lib/colorScale";
@@ -13,6 +14,10 @@ type Stats = {
 type AdminSession = {
   authenticated: boolean;
 };
+
+const MAP_LOD_LEVELS: MapLodLevel[] = [5, 4, 3, 2, 1];
+const START_TEXT_MAX_LENGTH = 800;
+const START_LOGO_MAX_BYTES = 512 * 1024;
 
 function newId(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
@@ -36,7 +41,14 @@ function createPage(title = "Page 1"): SurveyPageConfig {
   };
 }
 
+function normalizeMapLodLevels(levels: readonly number[] | undefined, useAggregatedShapes = false): MapLodLevel[] {
+  const fallback: MapLodLevel[] = useAggregatedShapes ? [5, 4, 3, 2, 1] : [5];
+  const selected = MAP_LOD_LEVELS.filter((level) => levels?.includes(level));
+  return selected.length > 0 ? selected : fallback;
+}
+
 function normalizeSurvey(survey: PagedSurvey): PagedSurvey {
+  const mapLodLevels = normalizeMapLodLevels(survey.map_lod_levels, survey.use_aggregated_shapes ?? false);
   const pages = survey.pages?.length
     ? survey.pages.map((page, pageIndex) => ({
       ...page,
@@ -70,7 +82,10 @@ function normalizeSurvey(survey: PagedSurvey): PagedSurvey {
     pages,
     terms_enabled: survey.terms_enabled ?? false,
     terms_text: survey.terms_text ?? "",
-    use_aggregated_shapes: survey.use_aggregated_shapes ?? false,
+    start_text: survey.start_text ?? "",
+    start_logo_data_url: survey.start_logo_data_url ?? "",
+    use_aggregated_shapes: mapLodLevels.some((level) => level < 5),
+    map_lod_levels: mapLodLevels,
     map_palette: survey.map_palette ?? DEFAULT_MAP_PALETTE
   };
 }
@@ -173,6 +188,7 @@ export function AdminPage() {
 
     setStatus("");
     try {
+      const mapLodLevels = normalizeMapLodLevels(survey.map_lod_levels, survey.use_aggregated_shapes ?? false);
       const payload = {
         title: survey.title,
         question_text: firstQuestion.text,
@@ -180,9 +196,12 @@ export function AdminPage() {
         max_rating: firstQuestion.max_rating,
         rating_labels: firstQuestion.rating_labels ?? {},
         pages: survey.pages,
+        start_text: survey.start_text ?? "",
+        start_logo_data_url: survey.start_logo_data_url ?? "",
         terms_enabled: survey.terms_enabled ?? false,
         terms_text: survey.terms_text ?? "",
-        use_aggregated_shapes: survey.use_aggregated_shapes ?? false,
+        use_aggregated_shapes: mapLodLevels.some((level) => level < 5),
+        map_lod_levels: mapLodLevels,
         map_palette: survey.map_palette ?? DEFAULT_MAP_PALETTE,
         is_active: survey.is_active ?? true
       };
@@ -364,6 +383,43 @@ export function AdminPage() {
     }) : current);
   }
 
+  function toggleMapLodLevel(level: MapLodLevel, checked: boolean) {
+    setSurvey((current) => {
+      if (!current) return current;
+      const currentLevels = normalizeMapLodLevels(current.map_lod_levels, current.use_aggregated_shapes ?? false);
+      const nextLevels = checked
+        ? MAP_LOD_LEVELS.filter((item) => item === level || currentLevels.includes(item))
+        : currentLevels.filter((item) => item !== level);
+      if (nextLevels.length === 0) return current;
+      return {
+        ...current,
+        use_aggregated_shapes: nextLevels.some((item) => item < 5),
+        map_lod_levels: nextLevels
+      };
+    });
+  }
+
+  function handleLogoUpload(file: File | undefined) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setStatus("Logo must be an image file.");
+      return;
+    }
+    if (file.size > START_LOGO_MAX_BYTES) {
+      setStatus("Logo image must be 512 KB or smaller.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : "";
+      setSurvey((current) => current ? { ...current, start_logo_data_url: dataUrl } : current);
+      setStatus("");
+    };
+    reader.onerror = () => setStatus("Could not read logo image.");
+    reader.readAsDataURL(file);
+  }
+
   if (authStatus === "checking") {
     return <section className="panel">Loading admin...</section>;
   }
@@ -415,13 +471,65 @@ export function AdminPage() {
           }} />
           Active
         </label>
-        <label className="check">
-          <input type="checkbox" checked={survey.use_aggregated_shapes ?? false} onChange={(event) => {
-            const useAggregatedShapes = event.target.checked;
-            setSurvey((current) => current ? { ...current, use_aggregated_shapes: useAggregatedShapes } : current);
-          }} />
-          Use aggregated shapes
-        </label>
+        <div className="wide start-editor">
+          <div className="start-editor__header">
+            <div>
+              <span className="label">Start page</span>
+            </div>
+            {survey.start_logo_data_url ? (
+              <button type="button" onClick={() => setSurvey((current) => current ? { ...current, start_logo_data_url: "" } : current)}>
+                Remove logo
+              </button>
+            ) : null}
+          </div>
+          <div className="start-editor__grid">
+            <label className="field">
+              <span>Start text</span>
+              <textarea
+                maxLength={START_TEXT_MAX_LENGTH}
+                value={survey.start_text ?? ""}
+                onChange={(event) => {
+                  const startText = event.target.value;
+                  setSurvey((current) => current ? { ...current, start_text: startText } : current);
+                }}
+              />
+              <small>{(survey.start_text ?? "").length}/{START_TEXT_MAX_LENGTH}</small>
+            </label>
+            <div className="field">
+              <span>Cluster logo</span>
+              <input
+                accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                type="file"
+                onChange={(event) => handleLogoUpload(event.target.files?.[0])}
+              />
+              {survey.start_logo_data_url ? (
+                <img className="start-editor__logo-preview" src={survey.start_logo_data_url} alt="Cluster logo preview" />
+              ) : (
+                <div className="start-editor__logo-empty">No logo uploaded</div>
+              )}
+            </div>
+          </div>
+        </div>
+        <fieldset className="field lod-field">
+          <legend>Map LODs</legend>
+          <div className="lod-options">
+            {MAP_LOD_LEVELS.map((level) => {
+              const selectedLevels = normalizeMapLodLevels(survey.map_lod_levels, survey.use_aggregated_shapes ?? false);
+              const checked = selectedLevels.includes(level);
+              return (
+                <label className="check" key={level}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={checked && selectedLevels.length === 1}
+                    onChange={(event) => toggleMapLodLevel(level, event.target.checked)}
+                  />
+                  LOD {level}
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
         <div className="field palette-field">
           <label>
             <span>Map palette</span>

@@ -1,9 +1,15 @@
 import { z } from "zod";
 import { DEFAULT_MAP_PALETTE, MAP_PALETTE_IDS } from "../shared/mapPalettes.js";
 
+const ALL_MAP_LOD_LEVELS = [1, 2, 3, 4, 5] as const;
+
 const ratingLabelsSchema = z.record(z.string().regex(/^-?\d+$/), z.string().trim().max(80));
 
 const idSchema = z.string().trim().min(1).max(80).regex(/^[A-Za-z0-9_-]+$/);
+const imageDataUrlSchema = z.string()
+  .max(750_000)
+  .regex(/^data:image\/(?:png|jpeg|webp|gif|svg\+xml);base64,[A-Za-z0-9+/=]+$/)
+  .or(z.literal(""));
 
 const questionSchema = z.object({
   id: idSchema,
@@ -43,6 +49,20 @@ const pageSchema = z.object({
   }
 });
 
+const mapLodLevelsSchema = z.array(z.union([
+  z.literal(1),
+  z.literal(2),
+  z.literal(3),
+  z.literal(4),
+  z.literal(5)
+])).min(1).superRefine((levels, ctx) => {
+  if (new Set(levels).size === levels.length) return;
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    message: "map_lod_levels must contain unique levels"
+  });
+});
+
 export const responseSchema = z.object({
   survey_id: z.string().trim().min(1),
   postal_code: z.string().regex(/^\d{5}$/),
@@ -57,9 +77,12 @@ export const adminSurveySchema = z.object({
   title: z.string().trim().min(1).max(160),
   pages: z.array(pageSchema).min(1),
   is_active: z.boolean().default(true),
+  start_text: z.string().trim().max(800).default(""),
+  start_logo_data_url: imageDataUrlSchema.default(""),
   terms_enabled: z.boolean().default(false),
   terms_text: z.string().trim().max(5000).default(""),
   use_aggregated_shapes: z.boolean().default(false),
+  map_lod_levels: mapLodLevelsSchema.optional(),
   map_palette: z.enum(MAP_PALETTE_IDS).default(DEFAULT_MAP_PALETTE)
 }).superRefine((value, ctx) => {
   const pageIds = new Set<string>();
@@ -85,6 +108,13 @@ export const adminSurveySchema = z.object({
       questionIds.add(question.id);
     }
   }
+}).transform((value) => {
+  const mapLodLevels = value.map_lod_levels ?? (value.use_aggregated_shapes ? [...ALL_MAP_LOD_LEVELS] : [5]);
+  return {
+    ...value,
+    use_aggregated_shapes: mapLodLevels.some((level) => level < 5),
+    map_lod_levels: mapLodLevels
+  };
 });
 
 export const surveyIdParamsSchema = z.object({

@@ -12,7 +12,7 @@ export function PostalCodeInput({ value, onChange, disabled = false, error }: Pr
   const message = error ?? validationError;
   return (
     <label className="field">
-      <span>Postal code</span>
+      <span>Postleitzahl</span>
       <input
         inputMode="numeric"
         autoComplete="postal-code"

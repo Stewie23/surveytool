@@ -46,6 +46,7 @@ Set `ADMIN_PASSWORD` in a local `.env` file or server environment to protect the
 ## PLZ Data
 
 The app loads PLZ polygons from `public/data/germany-plz.topojson.json` and lower-detail LOD files named `public/data/germany-plz-1.topojson.json` through `public/data/germany-plz-4.topojson.json`.
+Admins can choose which map LODs are available to the public map. LOD `5` is the full-detail file, and LODs `1` through `4` use the matching lower-detail files. Selections can be non-contiguous, and the map falls back to the nearest enabled LOD when zooming.
 
 Recommended MVP source: [`yetzt/postleitzahlen`](https://github.com/yetzt/postleitzahlen), which publishes German postcode areas in compressed GeoJSON/TopoJSON formats derived from OpenStreetMap.
 

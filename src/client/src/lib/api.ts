@@ -1,4 +1,4 @@
-import type { Aggregate, QuestionAggregates, Survey, SurveyPage, SurveyQuestion } from "../../../shared/types";
+import type { Aggregate, MapLodLevel, QuestionAggregates, Survey, SurveyPage, SurveyQuestion } from "../../../shared/types";
 
 export type { SurveyQuestion };
 
@@ -9,6 +9,7 @@ export type PagedSurvey = Survey & {
   terms_enabled?: boolean;
   terms_text?: string;
   use_aggregated_shapes?: boolean;
+  map_lod_levels?: MapLodLevel[];
   map_palette?: string;
 };
 

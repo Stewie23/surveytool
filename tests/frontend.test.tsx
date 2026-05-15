@@ -5,7 +5,7 @@ import { AdminPage } from "../src/client/src/pages/AdminPage";
 import { MapPage } from "../src/client/src/pages/MapPage";
 import { SurveyPage } from "../src/client/src/pages/SurveyPage";
 import { colorForAverage, parsePaletteText } from "../src/client/src/lib/colorScale";
-import { aggregateToPlzLevel, joinAggregates, plzLevelForZoom } from "../src/client/src/lib/plzJoin";
+import { aggregateToPlzLevel, joinAggregates, nearestEnabledPlzLevel, plzLevelForZoom } from "../src/client/src/lib/plzJoin";
 import { isValidPostalCode } from "../src/client/src/lib/validation";
 
 vi.mock("../src/client/src/components/GermanyPlzMap", () => ({
@@ -63,7 +63,7 @@ class FakeEventSource {
   }
 }
 
-function mapFetchMock(results: Array<unknown>, useAggregatedShapes = false) {
+function mapFetchMock(results: Array<unknown>, useAggregatedShapes = false, mapLodLevels?: number[]) {
   let resultIndex = 0;
   const plzData = {
     type: "FeatureCollection",
@@ -91,12 +91,16 @@ function mapFetchMock(results: Array<unknown>, useAggregatedShapes = false) {
         terms_enabled: false,
         terms_text: "",
         use_aggregated_shapes: useAggregatedShapes,
+        map_lod_levels: mapLodLevels,
         map_palette: "batlow",
         is_active: true
       });
     }
     if (path === "/data/germany-plz.topojson.json") return jsonResponse(plzData);
     if (path === "/data/germany-plz-1.topojson.json") return jsonResponse(plzData);
+    if (path === "/data/germany-plz-2.topojson.json") return jsonResponse(plzData);
+    if (path === "/data/germany-plz-3.topojson.json") return jsonResponse(plzData);
+    if (path === "/data/germany-plz-4.topojson.json") return jsonResponse(plzData);
     if (path === "/data/gradients/batlow.txt") return textResponse("0 0 0\n1 1 1");
     if (path === "/api/results/active") {
       const result = results[Math.min(resultIndex, results.length - 1)];
@@ -173,13 +177,13 @@ describe("frontend survey controls", () => {
 
     render(<SurveyPage />);
     expect(await screen.findByText("Rate it")).toBeInTheDocument();
-    expect(screen.getAllByLabelText(/postal code/i)).toHaveLength(1);
+    expect(screen.getAllByLabelText(/postleitzahl/i)).toHaveLength(1);
     fireEvent.click(screen.getByRole("radio", { name: "+3" }));
     fireEvent.click(screen.getByRole("radio", { name: "+2 Agree" }));
-    fireEvent.change(screen.getByLabelText(/postal code/i), { target: { value: "10115" } });
+    fireEvent.change(screen.getByLabelText(/postleitzahl/i), { target: { value: "10115" } });
     fireEvent.click(screen.getByRole("button", { name: /continue/i }));
     expect(await screen.findByText("Final rating")).toBeInTheDocument();
-    expect(screen.queryByLabelText(/postal code/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/postleitzahl/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("radio", { name: "+5" }));
     fireEvent.click(screen.getByRole("button", { name: /continue/i }));
     expect(await screen.findByText("Sample terms")).toBeInTheDocument();
@@ -206,6 +210,40 @@ describe("frontend survey controls", () => {
     );
   });
 
+  it("shows a start page before survey questions", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      text: async () => JSON.stringify({
+        id: "default",
+        title: "Test",
+        question_text: "Rate it",
+        min_rating: -3,
+        max_rating: 3,
+        start_text: "Welcome **cluster**.\n\nSecond paragraph.",
+        start_logo_data_url: "data:image/png;base64,aGVsbG8=",
+        pages: [{
+          id: "page-1",
+          title: "Basics",
+          questions: [{ id: "q-1", text: "Rate it", min_rating: -3, max_rating: 3 }]
+        }],
+        terms_enabled: false,
+        terms_text: ""
+      })
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SurveyPage />);
+    expect(await screen.findByText(/welcome/i)).toBeInTheDocument();
+    expect(screen.getByText("cluster")).toBeInTheDocument();
+    expect(screen.getByText("Second paragraph.")).toBeInTheDocument();
+    expect(screen.getByAltText("Cluster logo")).toBeInTheDocument();
+    expect(screen.queryByText("Rate it")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /start survey/i }));
+    expect(await screen.findByText("Rate it")).toBeInTheDocument();
+    expect(screen.getByLabelText(/postleitzahl/i)).toBeInTheDocument();
+  });
+
   it("requires an admin password before showing the admin editor", async () => {
     const fetchMock = adminFetchMock([
       jsonResponse({ authenticated: false }),
@@ -225,6 +263,7 @@ describe("frontend survey controls", () => {
           terms_enabled: false,
           terms_text: "",
           map_palette: "batlow",
+          map_lod_levels: [5],
           is_active: true
       }),
       jsonResponse({ totalResponses: 0, postalCodeCount: 0 }),
@@ -283,6 +322,7 @@ describe("frontend survey controls", () => {
           terms_enabled: false,
           terms_text: "",
           map_palette: "batlow",
+          map_lod_levels: [5],
           is_active: true
       }),
       jsonResponse({ totalResponses: 0, postalCodeCount: 0 }),
@@ -313,6 +353,7 @@ describe("frontend survey controls", () => {
           terms_enabled: true,
           terms_text: "Terms go here",
           map_palette: "tokyo",
+          map_lod_levels: [5],
           is_active: true
       }),
       jsonResponse({ totalResponses: 12, postalCodeCount: 3 }),
@@ -322,9 +363,12 @@ describe("frontend survey controls", () => {
 
     render(<AdminPage />);
     expect(await screen.findByText("Survey settings")).toBeInTheDocument();
-    expect(screen.getByLabelText(/use aggregated shapes/i)).not.toBeChecked();
+    expect(screen.getByLabelText("LOD 5")).toBeChecked();
+    expect(screen.getByLabelText("LOD 5")).toBeDisabled();
+    expect(screen.getByLabelText("LOD 4")).not.toBeChecked();
 
     fireEvent.change(screen.getByLabelText(/page title/i), { target: { value: "Intro" } });
+    fireEvent.change(screen.getByLabelText(/start text/i), { target: { value: "Intro copy" } });
     fireEvent.change(screen.getByPlaceholderText("Strongly agree"), { target: { value: "Agree strongly" } });
     fireEvent.click(screen.getByRole("button", { name: /add question/i }));
     fireEvent.click(screen.getByRole("button", { name: /add page/i }));
@@ -341,9 +385,12 @@ describe("frontend survey controls", () => {
       min_rating: -3,
       max_rating: 3,
       rating_labels: { "3": "Agree strongly" },
+      start_text: "Intro copy",
+      start_logo_data_url: "",
       terms_enabled: true,
       terms_text: "Terms go here",
       use_aggregated_shapes: false,
+      map_lod_levels: [5],
       map_palette: "tokyo",
       is_active: true
     });
@@ -400,6 +447,7 @@ describe("frontend survey controls", () => {
           terms_enabled: false,
           terms_text: "",
           map_palette: "batlow",
+          map_lod_levels: [5],
           is_active: true
       }),
       jsonResponse({ totalResponses: 0, postalCodeCount: 0 }),
@@ -420,6 +468,51 @@ describe("frontend survey controls", () => {
     expect(saveBody.pages[0].questions[1]).toMatchObject({ text: "New rating question" });
   });
 
+  it("saves non-contiguous map LOD levels and keeps one selected", async () => {
+    const fetchMock = adminFetchMock([
+      jsonResponse({ authenticated: true }),
+      jsonResponse({
+          id: "default",
+          title: "Test",
+          question_text: "Rate it",
+          min_rating: -3,
+          max_rating: 3,
+          rating_labels: {},
+          pages: [{
+            id: "page-1",
+            title: "Page 1",
+            questions: [{ id: "q-1", text: "Rate it", min_rating: -3, max_rating: 3, rating_labels: {} }]
+          }],
+          terms_enabled: false,
+          terms_text: "",
+          map_palette: "batlow",
+          map_lod_levels: [5],
+          is_active: true
+      }),
+      jsonResponse({ totalResponses: 0, postalCodeCount: 0 }),
+      (_path: string, options?: RequestInit) => textResponse(options?.body as string)
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AdminPage />);
+    expect(await screen.findByText("Survey settings")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("LOD 3"));
+    fireEvent.click(screen.getByLabelText("LOD 1"));
+    fireEvent.click(screen.getByLabelText("LOD 5"));
+    fireEvent.click(screen.getByRole("button", { name: /save survey/i }));
+
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Survey saved."));
+    const saveCall = fetchMock.mock.calls.find(([path]) => path === "/api/admin/survey");
+    const saveBody = JSON.parse(saveCall?.[1]?.body as string);
+    expect(saveBody).toMatchObject({
+      use_aggregated_shapes: true,
+      map_lod_levels: [3, 1]
+    });
+    expect(screen.getByLabelText("LOD 3")).toBeChecked();
+    expect(screen.getByLabelText("LOD 1")).toBeChecked();
+  });
+
   it("keeps local questions visible when a stale save response drops pages", async () => {
     const fetchMock = adminFetchMock([
       jsonResponse({ authenticated: true }),
@@ -438,6 +531,7 @@ describe("frontend survey controls", () => {
           terms_enabled: false,
           terms_text: "",
           map_palette: "batlow",
+          map_lod_levels: [5],
           is_active: true
       }),
       jsonResponse({ totalResponses: 0, postalCodeCount: 0 }),
@@ -496,6 +590,20 @@ describe("frontend map page", () => {
 
     expect(await screen.findByRole("heading", { name: "Rate it" })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/data/germany-plz-1.topojson.json");
+  });
+
+  it("loads the coarsest selected map LOD first", async () => {
+    FakeEventSource.instances = [];
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const fetchMock = mapFetchMock([
+      [{ question_id: "q-1", aggregates: [{ question_id: "q-1", postal_code: "10115", count: 1, average: 2, sum: 2, hidden: false }] }]
+    ], true, [5, 3]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MapPage />);
+
+    expect(await screen.findByRole("heading", { name: "Rate it" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith("/data/germany-plz-3.topojson.json");
   });
 
   it("refreshes result data manually without reloading PLZ shapes", async () => {
@@ -646,6 +754,12 @@ describe("frontend map helpers", () => {
     expect(plzLevelForZoom(6.5)).toBe(3);
     expect(plzLevelForZoom(8)).toBe(4);
     expect(plzLevelForZoom(9.5)).toBe(5);
+  });
+
+  it("falls back to the nearest enabled PLZ level and prefers finer ties", () => {
+    expect(nearestEnabledPlzLevel(4, [5, 3, 1])).toBe(5);
+    expect(nearestEnabledPlzLevel(2, [5, 3, 1])).toBe(3);
+    expect(nearestEnabledPlzLevel(1, [5, 3])).toBe(3);
   });
 
   it("adapts color scale outside the default -3 to +3 range", () => {

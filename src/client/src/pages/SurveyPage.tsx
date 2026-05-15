@@ -4,6 +4,45 @@ import { RatingScale } from "../components/RatingScale";
 import { apiPost, getActiveSurvey, type PagedSurvey, type SurveyPageConfig } from "../lib/api";
 import { isValidPostalCode } from "../lib/validation";
 
+function renderInlineMarkdown(text: string) {
+  const tokens = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*|\[[^\]]+\]\(https?:\/\/[^)\s]+\))/g);
+  return tokens.map((token, index) => {
+    if (token.startsWith("**") && token.endsWith("**")) {
+      return <strong key={index}>{token.slice(2, -2)}</strong>;
+    }
+    if (token.startsWith("*") && token.endsWith("*")) {
+      return <em key={index}>{token.slice(1, -1)}</em>;
+    }
+    if (token.startsWith("`") && token.endsWith("`")) {
+      return <code key={index}>{token.slice(1, -1)}</code>;
+    }
+    const link = token.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
+    if (link) {
+      return <a key={index} href={link[2]} rel="noreferrer" target="_blank">{link[1]}</a>;
+    }
+    return token;
+  });
+}
+
+function MarkdownText({ text }: { text: string }) {
+  const paragraphs = text.trim().split(/\n{2,}/).filter(Boolean);
+  if (paragraphs.length === 0) return null;
+  return (
+    <div className="markdown-text">
+      {paragraphs.map((paragraph, paragraphIndex) => (
+        <p key={paragraphIndex}>
+          {paragraph.split(/\n/).map((line, lineIndex) => (
+            <span key={lineIndex}>
+              {lineIndex > 0 ? <br /> : null}
+              {renderInlineMarkdown(line)}
+            </span>
+          ))}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 function normalizeSurvey(survey: PagedSurvey): PagedSurvey & { pages: SurveyPageConfig[] } {
   return {
     ...survey,
@@ -20,6 +59,9 @@ function normalizeSurvey(survey: PagedSurvey): PagedSurvey & { pages: SurveyPage
           rating_labels: survey.rating_labels ?? {}
         }]
       }]
+    ,
+    start_text: survey.start_text ?? "",
+    start_logo_data_url: survey.start_logo_data_url ?? ""
   };
 }
 
@@ -38,9 +80,13 @@ export function SurveyPage() {
       .catch((error) => setStatus(error.message));
   }, []);
 
-  const currentPage = survey?.pages[pageIndex];
-  const isTermsStep = Boolean(survey?.terms_enabled) && pageIndex >= (survey?.pages.length ?? 0);
-  const isLastQuestionPage = survey ? pageIndex === survey.pages.length - 1 : false;
+  const hasStartPage = Boolean(survey?.start_text || survey?.start_logo_data_url);
+  const startOffset = hasStartPage ? 1 : 0;
+  const isStartStep = hasStartPage && pageIndex === 0;
+  const questionPageIndex = pageIndex - startOffset;
+  const currentPage = isStartStep ? undefined : survey?.pages[questionPageIndex];
+  const isTermsStep = Boolean(survey?.terms_enabled) && questionPageIndex >= (survey?.pages.length ?? 0);
+  const isLastQuestionPage = survey ? questionPageIndex === survey.pages.length - 1 : false;
   const answeredCurrentPage = useMemo(
     () => currentPage?.questions.every((question) => answers[question.id] !== undefined) ?? false,
     [answers, currentPage]
@@ -103,7 +149,7 @@ export function SurveyPage() {
 
     setStatus("");
     if (isLastQuestionPage && survey.terms_enabled) {
-      setPageIndex(survey.pages.length);
+      setPageIndex(survey.pages.length + startOffset);
       return;
     }
     if (isLastQuestionPage) {
@@ -130,7 +176,17 @@ export function SurveyPage() {
       <h1>{survey.title}</h1>
       {alreadySubmitted ? <p className="notice">This browser already submitted for this survey.</p> : null}
 
-      {isTermsStep ? (
+      {isStartStep ? (
+        <div className="survey-form start-page">
+          {survey.start_logo_data_url ? (
+            <img className="start-page__logo" src={survey.start_logo_data_url} alt="Cluster logo" />
+          ) : null}
+          <MarkdownText text={survey.start_text ?? ""} />
+          <div className="survey-actions">
+            <button className="primary" type="button" onClick={() => setPageIndex(1)}>Start survey</button>
+          </div>
+        </div>
+      ) : isTermsStep ? (
         <form onSubmit={handleTermsSubmit} className="survey-form">
           <div>
             <p className="eyebrow">Terms</p>
@@ -141,7 +197,7 @@ export function SurveyPage() {
             I accept the terms
           </label>
           <div className="survey-actions">
-            <button type="button" onClick={() => setPageIndex(survey.pages.length - 1)}>Back</button>
+            <button type="button" onClick={() => setPageIndex(survey.pages.length - 1 + startOffset)}>Back</button>
             <button className="primary" type="submit" disabled={loading || !acceptedTerms}>
               {loading ? "Submitting..." : "Submit response"}
             </button>
@@ -150,7 +206,7 @@ export function SurveyPage() {
       ) : currentPage ? (
         <form onSubmit={handleContinue} className="survey-form">
           <div className="survey-progress">
-            <span>Page {pageIndex + 1} of {survey.pages.length}</span>
+            <span>Page {questionPageIndex + 1} of {survey.pages.length}</span>
             <strong>{currentPage.title}</strong>
           </div>
           {currentPage.questions.map((question) => (
@@ -166,7 +222,7 @@ export function SurveyPage() {
               {answers[question.id] === undefined ? <span className="field__hint">Required</span> : null}
             </fieldset>
           ))}
-          {pageIndex === 0 ? <PostalCodeInput value={postalCode} onChange={setPostalCode} /> : null}
+          {questionPageIndex === 0 ? <PostalCodeInput value={postalCode} onChange={setPostalCode} /> : null}
           <div className="survey-actions">
             <button type="button" onClick={() => setPageIndex(Math.max(0, pageIndex - 1))} disabled={pageIndex === 0 || loading}>
               Back

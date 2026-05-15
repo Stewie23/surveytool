@@ -1,8 +1,9 @@
 import { feature } from "topojson-client";
-import type { Aggregate } from "../../../shared/types";
+import type { Aggregate, MapLodLevel } from "../../../shared/types";
 
 type FeatureCollection = GeoJSON.FeatureCollection<GeoJSON.Geometry, Record<string, unknown>>;
-export type PlzLevel = 1 | 2 | 3 | 4 | 5;
+export type PlzLevel = MapLodLevel;
+export const ALL_PLZ_LEVELS: PlzLevel[] = [1, 2, 3, 4, 5];
 
 const propertyCandidates = ["postal_code", "plz", "postcode", "name"];
 
@@ -105,6 +106,35 @@ export function plzLevelForZoom(zoom: number): PlzLevel {
   if (zoom < 8) return 3;
   if (zoom < 9.5) return 4;
   return 5;
+}
+
+export function normalizePlzLevels(levels: readonly number[] | null | undefined, useAggregatedShapes = false): PlzLevel[] {
+  const fallback: PlzLevel[] = useAggregatedShapes ? [...ALL_PLZ_LEVELS] : [5];
+  const selected = (levels ?? []).filter((level): level is PlzLevel =>
+    level === 1 || level === 2 || level === 3 || level === 4 || level === 5
+  );
+  const unique = Array.from(new Set(selected));
+  return unique.length > 0 ? unique.sort((left, right) => left - right) : fallback;
+}
+
+export function coarsestPlzLevel(levels: readonly PlzLevel[]): PlzLevel {
+  return levels.reduce((coarsest, level) => Math.min(coarsest, level) as PlzLevel, 5);
+}
+
+export function nearestEnabledPlzLevel(desired: PlzLevel, enabledLevels: readonly PlzLevel[]): PlzLevel {
+  const levels = normalizePlzLevels(enabledLevels);
+  const firstLevel = levels[0] ?? 5;
+  return levels.reduce((best, level) => {
+    const bestDistance = Math.abs(best - desired);
+    const distance = Math.abs(level - desired);
+    if (distance < bestDistance) return level;
+    if (distance === bestDistance && level > best) return level;
+    return best;
+  }, firstLevel);
+}
+
+export function plzSourcePath(level: PlzLevel): string {
+  return level === 5 ? "/data/germany-plz.topojson.json" : `/data/germany-plz-${level}.topojson.json`;
 }
 
 function normalizeFeatures(collection: FeatureCollection): FeatureCollection {

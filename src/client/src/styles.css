@@ -248,6 +248,24 @@ textarea {
   width: 100%;
 }
 
+.lod-field {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.lod-field legend {
+  color: #334155;
+  font-weight: 650;
+  padding: 0;
+}
+
+.lod-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+}
+
 .stats {
   display: flex;
   flex-wrap: wrap;
@@ -285,9 +303,56 @@ textarea {
 .page-builder,
 .page-editor,
 .question-list,
+.start-editor,
 .terms-editor {
   display: grid;
   gap: 16px;
+}
+
+.start-editor {
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.start-editor__header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.start-editor__grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
+}
+
+.start-editor small {
+  color: #64748b;
+  justify-self: end;
+}
+
+.start-editor__logo-preview,
+.start-editor__logo-empty {
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  height: 150px;
+}
+
+.start-editor__logo-preview {
+  background: #f8fafc;
+  object-fit: contain;
+  padding: 12px;
+  width: 100%;
+}
+
+.start-editor__logo-empty {
+  align-items: center;
+  color: #64748b;
+  display: grid;
+  font-weight: 650;
+  place-items: center;
 }
 
 .page-tabs {
@@ -398,6 +463,38 @@ textarea {
   overflow: auto;
   padding: 14px;
   white-space: pre-wrap;
+}
+
+.start-page {
+  align-items: start;
+}
+
+.start-page__logo {
+  max-height: 150px;
+  max-width: min(320px, 100%);
+  object-fit: contain;
+}
+
+.markdown-text {
+  color: #334155;
+  display: grid;
+  gap: 12px;
+  line-height: 1.55;
+}
+
+.markdown-text p {
+  margin: 0;
+}
+
+.markdown-text a {
+  color: #0f766e;
+  font-weight: 700;
+}
+
+.markdown-text code {
+  background: #eef2f7;
+  border-radius: 4px;
+  padding: 1px 5px;
 }
 
 .map-header {
@@ -585,6 +682,7 @@ textarea {
   .page-editor__header,
   .question-editor__header,
   .question-editor__range,
+  .start-editor__grid,
   .survey-actions,
   .map-controls {
     align-items: stretch;

@@ -32,9 +32,12 @@ export function migrate(db: Db): void {
       max_rating INTEGER NOT NULL DEFAULT 3,
       rating_labels TEXT NOT NULL DEFAULT '{}',
       pages TEXT NOT NULL DEFAULT '[]',
+      start_text TEXT NOT NULL DEFAULT '',
+      start_logo_data_url TEXT NOT NULL DEFAULT '',
       terms_enabled INTEGER NOT NULL DEFAULT 0,
       terms_text TEXT NOT NULL DEFAULT '',
       use_aggregated_shapes INTEGER NOT NULL DEFAULT 0,
+      map_lod_levels TEXT NOT NULL DEFAULT '[5]',
       map_palette TEXT NOT NULL DEFAULT 'batlow',
       is_active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL,
@@ -101,11 +104,21 @@ export function migrate(db: Db): void {
   if (!surveyColumns.some((column) => column.name === "terms_enabled")) {
     db.exec("ALTER TABLE surveys ADD COLUMN terms_enabled INTEGER NOT NULL DEFAULT 0");
   }
+  if (!surveyColumns.some((column) => column.name === "start_text")) {
+    db.exec("ALTER TABLE surveys ADD COLUMN start_text TEXT NOT NULL DEFAULT ''");
+  }
+  if (!surveyColumns.some((column) => column.name === "start_logo_data_url")) {
+    db.exec("ALTER TABLE surveys ADD COLUMN start_logo_data_url TEXT NOT NULL DEFAULT ''");
+  }
   if (!surveyColumns.some((column) => column.name === "terms_text")) {
     db.exec("ALTER TABLE surveys ADD COLUMN terms_text TEXT NOT NULL DEFAULT ''");
   }
   if (!surveyColumns.some((column) => column.name === "use_aggregated_shapes")) {
     db.exec("ALTER TABLE surveys ADD COLUMN use_aggregated_shapes INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!surveyColumns.some((column) => column.name === "map_lod_levels")) {
+    db.exec("ALTER TABLE surveys ADD COLUMN map_lod_levels TEXT NOT NULL DEFAULT '[5]'");
+    db.exec("UPDATE surveys SET map_lod_levels = '[1,2,3,4,5]' WHERE use_aggregated_shapes = 1");
   }
   if (!surveyColumns.some((column) => column.name === "map_palette")) {
     db.exec(`ALTER TABLE surveys ADD COLUMN map_palette TEXT NOT NULL DEFAULT '${DEFAULT_MAP_PALETTE}'`);
@@ -139,8 +152,8 @@ export function seedDefaultSurvey(db: Db): void {
   const now = new Date().toISOString();
   db.prepare(`
     INSERT INTO surveys
-      (id, title, question_text, min_rating, max_rating, rating_labels, pages, terms_enabled, terms_text, use_aggregated_shapes, map_palette, is_active, created_at, updated_at)
-    VALUES (?, ?, ?, -3, 3, '{}', ?, 0, '', 0, ?, 1, ?, ?)
+      (id, title, question_text, min_rating, max_rating, rating_labels, pages, terms_enabled, terms_text, use_aggregated_shapes, map_lod_levels, map_palette, is_active, created_at, updated_at)
+    VALUES (?, ?, ?, -3, 3, '{}', ?, 0, '', 0, '[5]', ?, 1, ?, ?)
   `).run(
     "default",
     "Stimmungsbild",
