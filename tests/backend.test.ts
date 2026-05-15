@@ -161,6 +161,7 @@ describe("backend API", () => {
         }],
         start_text: "Welcome **cluster** participants.\n\nSecond paragraph.",
         start_logo_data_url: "data:image/png;base64,aGVsbG8=",
+        thank_you_text: "Thank **you**.\n\nMore soon.",
         terms_enabled: true,
         terms_text: "Please accept",
         use_aggregated_shapes: true,
@@ -173,6 +174,7 @@ describe("backend API", () => {
       title: "New",
       start_text: "Welcome **cluster** participants.\n\nSecond paragraph.",
       start_logo_data_url: "data:image/png;base64,aGVsbG8=",
+      thank_you_text: "Thank **you**.\n\nMore soon.",
       terms_enabled: true,
       terms_text: "Please accept",
       use_aggregated_shapes: true,
@@ -545,6 +547,31 @@ describe("backend API", () => {
     expect(accepted.headers["content-type"]).toContain("text/csv");
     expect(accepted.payload).toContain("submission_id,survey_id,postal_code,question_id,rating,terms_accepted,created_at");
     expect(accepted.payload).toContain(",default-question,2,0,");
+  });
+
+  it("stores newsletter contacts without linking them to response ids", async () => {
+    const created = await server.app.inject({
+      method: "POST",
+      url: "/api/newsletter-contacts",
+      payload: { name: "Ada Lovelace", email: "ada@example.com" }
+    });
+    expect(created.statusCode).toBe(201);
+    expect(tableCount("newsletter_contacts")).toBe(1);
+
+    const rejected = await server.app.inject({ method: "GET", url: "/api/admin/newsletter.csv" });
+    expect(rejected.statusCode).toBe(401);
+
+    const accepted = await server.app.inject({
+      method: "GET",
+      url: "/api/admin/newsletter.csv",
+      headers: { "x-admin-token": adminToken }
+    });
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.headers["content-type"]).toContain("text/csv");
+    expect(accepted.payload).toContain("name,email,created_at");
+    expect(accepted.payload).not.toContain("id,");
+    expect(accepted.payload).not.toContain("submission_id");
+    expect(accepted.payload).toContain("Ada Lovelace,ada@example.com");
   });
 
   it("clears stored responses and aggregates through the admin endpoint", async () => {

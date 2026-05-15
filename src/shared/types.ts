@@ -8,6 +8,7 @@ export type Survey = {
   terms_text: string;
   start_text: string;
   start_logo_data_url: string;
+  thank_you_text: string;
   use_aggregated_shapes: boolean;
   map_lod_levels?: MapLodLevel[];
   map_palette?: string;

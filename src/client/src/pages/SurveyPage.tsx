@@ -61,7 +61,8 @@ function normalizeSurvey(survey: PagedSurvey): PagedSurvey & { pages: SurveyPage
       }]
     ,
     start_text: survey.start_text ?? "",
-    start_logo_data_url: survey.start_logo_data_url ?? ""
+    start_logo_data_url: survey.start_logo_data_url ?? "",
+    thank_you_text: survey.thank_you_text ?? "Thanks, your response was submitted."
   };
 }
 
@@ -71,8 +72,14 @@ export function SurveyPage() {
   const [postalCode, setPostalCode] = useState("");
   const [pageIndex, setPageIndex] = useState(0);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [showCompletionPage, setShowCompletionPage] = useState(false);
+  const [contactName, setContactName] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactDone, setContactDone] = useState(false);
   const [status, setStatus] = useState("");
+  const [contactStatus, setContactStatus] = useState("");
   const [loading, setLoading] = useState(false);
+  const [contactLoading, setContactLoading] = useState(false);
 
   useEffect(() => {
     getActiveSurvey()
@@ -123,11 +130,13 @@ export function SurveyPage() {
         terms_accepted: survey.terms_enabled ? acceptedTerms : false
       });
       localStorage.setItem(`submitted:${survey.id}`, "true");
-      setStatus("Thanks, your response was submitted.");
+      setShowCompletionPage(true);
+      setStatus("");
+      setContactStatus("");
+      setContactDone(false);
       setAnswers({});
       setPostalCode("");
       setAcceptedTerms(false);
-      setPageIndex(0);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Submission failed.");
     } finally {
@@ -164,6 +173,26 @@ export function SurveyPage() {
     submit();
   }
 
+  async function submitNewsletterContact(event: FormEvent) {
+    event.preventDefault();
+    setContactLoading(true);
+    setContactStatus("");
+    try {
+      await apiPost("/api/newsletter-contacts", {
+        name: contactName,
+        email: contactEmail
+      });
+      setContactDone(true);
+      setContactName("");
+      setContactEmail("");
+      setContactStatus("Thanks, your contact details were saved.");
+    } catch (error) {
+      setContactStatus(error instanceof Error ? error.message : "Contact submission failed.");
+    } finally {
+      setContactLoading(false);
+    }
+  }
+
   if (!survey) {
     return <section className="panel">Loading survey...</section>;
   }
@@ -176,7 +205,41 @@ export function SurveyPage() {
       <h1>{survey.title}</h1>
       {alreadySubmitted ? <p className="notice">This browser already submitted for this survey.</p> : null}
 
-      {isStartStep ? (
+      {showCompletionPage ? (
+        <div className="survey-form completion-page">
+          <div role="status" className="success">
+            <MarkdownText text={survey.thank_you_text ?? "Thanks, your response was submitted."} />
+          </div>
+          {contactDone ? (
+            <div className="notice">Newsletter contact saved.</div>
+          ) : (
+            <form onSubmit={submitNewsletterContact} className="contact-form">
+              <p className="eyebrow">Newsletter</p>
+              <label className="field">
+                <span>Name</span>
+                <input value={contactName} onChange={(event) => setContactName(event.target.value)} autoComplete="name" />
+              </label>
+              <label className="field">
+                <span>Email address</span>
+                <input
+                  type="email"
+                  value={contactEmail}
+                  onChange={(event) => setContactEmail(event.target.value)}
+                  autoComplete="email"
+                  required
+                />
+              </label>
+              <div className="survey-actions">
+                <button className="primary" type="submit" disabled={contactLoading || !contactEmail}>
+                  {contactLoading ? "Saving..." : "Save contact"}
+                </button>
+                <button type="button" onClick={() => setContactDone(true)} disabled={contactLoading}>Skip</button>
+              </div>
+            </form>
+          )}
+          {contactStatus ? <p role="status" className={contactStatus.startsWith("Thanks") ? "success" : "error"}>{contactStatus}</p> : null}
+        </div>
+      ) : isStartStep ? (
         <div className="survey-form start-page">
           {survey.start_logo_data_url ? (
             <img className="start-page__logo" src={survey.start_logo_data_url} alt="Cluster logo" />

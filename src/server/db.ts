@@ -34,6 +34,7 @@ export function migrate(db: Db): void {
       pages TEXT NOT NULL DEFAULT '[]',
       start_text TEXT NOT NULL DEFAULT '',
       start_logo_data_url TEXT NOT NULL DEFAULT '',
+      thank_you_text TEXT NOT NULL DEFAULT 'Thanks, your response was submitted.',
       terms_enabled INTEGER NOT NULL DEFAULT 0,
       terms_text TEXT NOT NULL DEFAULT '',
       use_aggregated_shapes INTEGER NOT NULL DEFAULT 0,
@@ -82,6 +83,12 @@ export function migrate(db: Db): void {
       FOREIGN KEY (survey_id) REFERENCES surveys(id)
     );
 
+    CREATE TABLE IF NOT EXISTS newsletter_contacts (
+      name TEXT NOT NULL DEFAULT '',
+      email TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS postal_code_aggregates (
       survey_id TEXT NOT NULL,
       question_id TEXT NOT NULL DEFAULT 'default-question',
@@ -110,6 +117,9 @@ export function migrate(db: Db): void {
   if (!surveyColumns.some((column) => column.name === "start_logo_data_url")) {
     db.exec("ALTER TABLE surveys ADD COLUMN start_logo_data_url TEXT NOT NULL DEFAULT ''");
   }
+  if (!surveyColumns.some((column) => column.name === "thank_you_text")) {
+    db.exec("ALTER TABLE surveys ADD COLUMN thank_you_text TEXT NOT NULL DEFAULT 'Thanks, your response was submitted.'");
+  }
   if (!surveyColumns.some((column) => column.name === "terms_text")) {
     db.exec("ALTER TABLE surveys ADD COLUMN terms_text TEXT NOT NULL DEFAULT ''");
   }
@@ -124,6 +134,7 @@ export function migrate(db: Db): void {
     db.exec(`ALTER TABLE surveys ADD COLUMN map_palette TEXT NOT NULL DEFAULT '${DEFAULT_MAP_PALETTE}'`);
   }
 
+  migrateNewsletterContactsTable(db);
   backfillSurveyPages(db);
   backfillNormalizedSurveyDefinitions(db);
   migrateResponsesTable(db);
@@ -294,6 +305,25 @@ function migrateResponsesTable(db: Db): void {
     SELECT id, survey_id, postal_code, rating, 0, created_at
     FROM responses_old;
     DROP TABLE responses_old;
+  `);
+}
+
+function migrateNewsletterContactsTable(db: Db): void {
+  const columns = tableColumns(db, "newsletter_contacts");
+  const hasLinkedColumns = columns.some((column) => column.name === "submission_id" || column.name === "survey_id" || column.name === "id");
+  if (columns.length === 0 || !hasLinkedColumns) return;
+
+  db.exec(`
+    ALTER TABLE newsletter_contacts RENAME TO newsletter_contacts_old;
+    CREATE TABLE newsletter_contacts (
+      name TEXT NOT NULL DEFAULT '',
+      email TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL
+    );
+    INSERT OR REPLACE INTO newsletter_contacts (name, email, created_at)
+    SELECT name, email, created_at
+    FROM newsletter_contacts_old;
+    DROP TABLE newsletter_contacts_old;
   `);
 }
 

@@ -165,6 +165,7 @@ describe("frontend survey controls", () => {
               ]
             }
           ],
+          thank_you_text: "Thank **you**.\n\nMore soon.",
           terms_enabled: true,
           terms_text: "Sample terms"
         })
@@ -172,6 +173,10 @@ describe("frontend survey controls", () => {
       .mockResolvedValueOnce({
         ok: true,
         text: async () => JSON.stringify({ id: "response-1" })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({ saved: true })
       });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -190,7 +195,8 @@ describe("frontend survey controls", () => {
     fireEvent.click(screen.getByLabelText(/i accept the terms/i));
     fireEvent.click(screen.getByRole("button", { name: /submit response/i }));
 
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Thanks"));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Thank you."));
+    expect(screen.getByText("More soon.")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenLastCalledWith(
       "/api/responses",
       expect.objectContaining({
@@ -205,6 +211,21 @@ describe("frontend survey controls", () => {
             { question_id: "q-3", rating: 5 }
           ],
           terms_accepted: true
+        })
+      })
+    );
+
+    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: "Ada Lovelace" } });
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: "ada@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /save contact/i }));
+    await waitFor(() => expect(screen.getByText("Thanks, your contact details were saved.")).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/newsletter-contacts",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          name: "Ada Lovelace",
+          email: "ada@example.com"
         })
       })
     );
@@ -319,6 +340,7 @@ describe("frontend survey controls", () => {
               ]
             }
           ],
+          thank_you_text: "Default thanks",
           terms_enabled: false,
           terms_text: "",
           map_palette: "batlow",
@@ -350,6 +372,7 @@ describe("frontend survey controls", () => {
               ]
             }
           ],
+          thank_you_text: "Custom **thanks**",
           terms_enabled: true,
           terms_text: "Terms go here",
           map_palette: "tokyo",
@@ -369,6 +392,7 @@ describe("frontend survey controls", () => {
 
     fireEvent.change(screen.getByLabelText(/page title/i), { target: { value: "Intro" } });
     fireEvent.change(screen.getByLabelText(/start text/i), { target: { value: "Intro copy" } });
+    fireEvent.change(screen.getByLabelText(/thank you text/i), { target: { value: "Custom **thanks**" } });
     fireEvent.change(screen.getByPlaceholderText("Strongly agree"), { target: { value: "Agree strongly" } });
     fireEvent.click(screen.getByRole("button", { name: /add question/i }));
     fireEvent.click(screen.getByRole("button", { name: /add page/i }));
@@ -387,6 +411,7 @@ describe("frontend survey controls", () => {
       rating_labels: { "3": "Agree strongly" },
       start_text: "Intro copy",
       start_logo_data_url: "",
+      thank_you_text: "Custom **thanks**",
       terms_enabled: true,
       terms_text: "Terms go here",
       use_aggregated_shapes: false,
@@ -427,6 +452,9 @@ describe("frontend survey controls", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /export csv/i }));
     expect(open).toHaveBeenCalledWith("/api/admin/export.csv", "_blank");
+
+    fireEvent.click(screen.getByRole("button", { name: /export newsletter csv/i }));
+    expect(open).toHaveBeenCalledWith("/api/admin/newsletter.csv", "_blank");
   });
 
   it("saves an added admin question without requiring another editor action", async () => {

@@ -73,12 +73,18 @@ export const responseSchema = z.object({
   terms_accepted: z.boolean().optional()
 });
 
+export const newsletterContactSchema = z.object({
+  name: z.string().trim().max(160).default(""),
+  email: z.string().trim().email().max(254)
+});
+
 export const adminSurveySchema = z.object({
   title: z.string().trim().min(1).max(160),
   pages: z.array(pageSchema).min(1),
   is_active: z.boolean().default(true),
   start_text: z.string().trim().max(800).default(""),
   start_logo_data_url: imageDataUrlSchema.default(""),
+  thank_you_text: z.string().trim().max(800).default("Thanks, your response was submitted."),
   terms_enabled: z.boolean().default(false),
   terms_text: z.string().trim().max(5000).default(""),
   use_aggregated_shapes: z.boolean().default(false),

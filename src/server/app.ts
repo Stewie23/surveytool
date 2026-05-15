@@ -8,7 +8,7 @@ import { type AppConfig, loadConfig } from "./config.js";
 import { type Db, migrate, openDb, seedDefaultSurvey, syncPostalCodes, transaction } from "./db.js";
 import { loadPostalCodes } from "./plzDataset.js";
 import { checkResponseRateLimit } from "./rateLimit.js";
-import { adminSurveySchema, randomResponsesSchema, responseSchema, surveyIdParamsSchema } from "./schemas.js";
+import { adminSurveySchema, newsletterContactSchema, randomResponsesSchema, responseSchema, surveyIdParamsSchema } from "./schemas.js";
 import { SseHub } from "./sse.js";
 import { DEFAULT_MAP_PALETTE, isMapPaletteId } from "../shared/mapPalettes.js";
 import type { MapLodLevel } from "../shared/types.js";
@@ -23,6 +23,7 @@ type SurveyRow = {
   pages: string;
   start_text?: string;
   start_logo_data_url?: string;
+  thank_you_text?: string;
   terms_enabled: number;
   terms_text: string;
   use_aggregated_shapes: number;
@@ -130,8 +131,8 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
       }
       db.prepare(`
         INSERT INTO surveys
-          (id, title, question_text, min_rating, max_rating, rating_labels, pages, start_text, start_logo_data_url, terms_enabled, terms_text, use_aggregated_shapes, map_lod_levels, map_palette, is_active, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, title, question_text, min_rating, max_rating, rating_labels, pages, start_text, start_logo_data_url, thank_you_text, terms_enabled, terms_text, use_aggregated_shapes, map_lod_levels, map_palette, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           title = excluded.title,
           question_text = excluded.question_text,
@@ -141,6 +142,7 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
           pages = excluded.pages,
           start_text = excluded.start_text,
           start_logo_data_url = excluded.start_logo_data_url,
+          thank_you_text = excluded.thank_you_text,
           terms_enabled = excluded.terms_enabled,
           terms_text = excluded.terms_text,
           use_aggregated_shapes = excluded.use_aggregated_shapes,
@@ -158,6 +160,7 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
         pagesJson,
         parsed.data.start_text,
         parsed.data.start_logo_data_url,
+        parsed.data.thank_you_text,
         parsed.data.terms_enabled ? 1 : 0,
         parsed.data.terms_text,
         parsed.data.use_aggregated_shapes ? 1 : 0,
@@ -244,6 +247,23 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
     return reply.code(201).send({ id: responseId, aggregates: publicAggregates });
   });
 
+  app.post("/api/newsletter-contacts", async (request, reply) => {
+    const parsed = newsletterContactSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "Invalid newsletter contact", details: parsed.error.flatten() });
+    }
+
+    db.prepare(`
+      INSERT INTO newsletter_contacts (name, email, created_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(email) DO UPDATE SET
+        name = excluded.name,
+        created_at = excluded.created_at
+    `).run(parsed.data.name, parsed.data.email, new Date().toISOString());
+
+    return reply.code(201).send({ saved: true });
+  });
+
   app.get("/api/results/:surveyId", async (request, reply) => {
     const parsed = surveyIdParamsSchema.safeParse(request.params);
     if (!parsed.success) return reply.code(400).send({ error: "Invalid survey id" });
@@ -289,6 +309,25 @@ export function buildServer(options: BuildServerOptions = {}): BuiltServer {
     reply.header("content-type", "text/csv; charset=utf-8");
     reply.header("content-disposition", "attachment; filename=\"responses.csv\"");
     return toCsv(rows, ["submission_id", "survey_id", "postal_code", "question_id", "rating", "terms_accepted", "created_at"]);
+  });
+
+  app.get("/api/admin/newsletter.csv", async (request, reply) => {
+    if (!isAdminRequest(request, config.adminToken, adminSessions)) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
+
+    const rows = db.prepare(`
+      SELECT
+        newsletter_contacts.name,
+        newsletter_contacts.email,
+        newsletter_contacts.created_at
+      FROM newsletter_contacts
+      ORDER BY newsletter_contacts.created_at, newsletter_contacts.email
+    `).all() as Array<Record<string, unknown>>;
+
+    reply.header("content-type", "text/csv; charset=utf-8");
+    reply.header("content-disposition", "attachment; filename=\"newsletter-contacts.csv\"");
+    return toCsv(rows, ["name", "email", "created_at"]);
   });
 
   app.get("/api/admin/stats", async (request, reply) => {
@@ -396,6 +435,7 @@ function serializeSurvey(db: Db, survey: SurveyRow) {
     pages,
     start_text: survey.start_text ?? "",
     start_logo_data_url: survey.start_logo_data_url ?? "",
+    thank_you_text: survey.thank_you_text ?? "Thanks, your response was submitted.",
     terms_enabled: Boolean(survey.terms_enabled),
     terms_text: survey.terms_text,
     use_aggregated_shapes: Boolean(survey.use_aggregated_shapes),

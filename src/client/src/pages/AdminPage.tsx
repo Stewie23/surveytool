@@ -17,6 +17,7 @@ type AdminSession = {
 
 const MAP_LOD_LEVELS: MapLodLevel[] = [5, 4, 3, 2, 1];
 const START_TEXT_MAX_LENGTH = 800;
+const THANK_YOU_TEXT_MAX_LENGTH = 800;
 const START_LOGO_MAX_BYTES = 512 * 1024;
 
 function newId(prefix: string) {
@@ -84,6 +85,7 @@ function normalizeSurvey(survey: PagedSurvey): PagedSurvey {
     terms_text: survey.terms_text ?? "",
     start_text: survey.start_text ?? "",
     start_logo_data_url: survey.start_logo_data_url ?? "",
+    thank_you_text: survey.thank_you_text ?? "Thanks, your response was submitted.",
     use_aggregated_shapes: mapLodLevels.some((level) => level < 5),
     map_lod_levels: mapLodLevels,
     map_palette: survey.map_palette ?? DEFAULT_MAP_PALETTE
@@ -198,6 +200,7 @@ export function AdminPage() {
         pages: survey.pages,
         start_text: survey.start_text ?? "",
         start_logo_data_url: survey.start_logo_data_url ?? "",
+        thank_you_text: survey.thank_you_text ?? "Thanks, your response was submitted.",
         terms_enabled: survey.terms_enabled ?? false,
         terms_text: survey.terms_text ?? "",
         use_aggregated_shapes: mapLodLevels.some((level) => level < 5),
@@ -296,6 +299,10 @@ export function AdminPage() {
 
   function exportCsv() {
     window.open("/api/admin/export.csv", "_blank");
+  }
+
+  function exportNewsletterCsv() {
+    window.open("/api/admin/newsletter.csv", "_blank");
   }
 
   async function clearResults() {
@@ -510,6 +517,21 @@ export function AdminPage() {
             </div>
           </div>
         </div>
+        <div className="wide start-editor">
+          <span className="label">Completion page</span>
+          <label className="field">
+            <span>Thank you text</span>
+            <textarea
+              maxLength={THANK_YOU_TEXT_MAX_LENGTH}
+              value={survey.thank_you_text ?? ""}
+              onChange={(event) => {
+                const thankYouText = event.target.value;
+                setSurvey((current) => current ? { ...current, thank_you_text: thankYouText } : current);
+              }}
+            />
+            <small>{(survey.thank_you_text ?? "").length}/{THANK_YOU_TEXT_MAX_LENGTH}</small>
+          </label>
+        </div>
         <fieldset className="field lod-field">
           <legend>Map LODs</legend>
           <div className="lod-options">
@@ -713,6 +735,7 @@ export function AdminPage() {
 
         <button className="primary" type="submit">Save survey</button>
         <button type="button" onClick={exportCsv}>Export CSV</button>
+        <button type="button" onClick={exportNewsletterCsv}>Export newsletter CSV</button>
         <button type="button" onClick={logout} disabled={isWorking}>Log out</button>
       </form>
       <div className="admin-tools" aria-label="Database tools">
