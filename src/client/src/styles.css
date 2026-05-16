@@ -224,6 +224,15 @@ textarea {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.admin-tabs {
+  border-bottom: 1px solid #dbe3ee;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0 20px;
+  padding-bottom: 12px;
+}
+
 .wide {
   grid-column: 1 / -1;
 }
@@ -300,7 +309,7 @@ textarea {
   border-top: 1px solid #dbe3ee;
   display: grid;
   gap: 14px;
-  margin-top: 24px;
+  margin-top: 6px;
   padding-top: 22px;
 }
 
@@ -318,10 +327,50 @@ textarea {
 .page-builder,
 .page-editor,
 .question-list,
+.data-panel,
+.share-panel,
 .start-editor,
 .terms-editor {
   display: grid;
   gap: 16px;
+}
+
+.share-panel {
+  justify-items: start;
+}
+
+.qr-preview {
+  background: #ffffff;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  display: grid;
+  min-height: 322px;
+  padding: 12px;
+  place-items: center;
+  width: min(100%, 346px);
+}
+
+.qr-preview img {
+  display: block;
+  height: auto;
+  max-width: 100%;
+}
+
+.qr-preview__empty {
+  color: #64748b;
+  font-weight: 650;
+}
+
+.share-url {
+  background: #f8fafc;
+  border: 1px solid #dbe3ee;
+  border-radius: 6px;
+  color: #334155;
+  margin: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 10px 12px;
+  user-select: all;
 }
 
 .start-editor {

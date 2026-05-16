@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
 import { DEFAULT_MAP_PALETTE, MAP_PALETTE_IDS } from "../../../shared/mapPalettes";
 import type { MapLodLevel } from "../../../shared/types";
 import { RatingScale } from "../components/RatingScale";
@@ -15,10 +16,15 @@ type AdminSession = {
   authenticated: boolean;
 };
 
+type AdminTab = "settings" | "share" | "data";
+
 const MAP_LOD_LEVELS: MapLodLevel[] = [5, 4, 3, 2, 1];
 const START_TEXT_MAX_LENGTH = 800;
 const THANK_YOU_TEXT_MAX_LENGTH = 800;
 const START_LOGO_MAX_BYTES = 512 * 1024;
+const QR_SIZE = 320;
+const QR_CARD_WIDTH = 520;
+const QR_CARD_PADDING = 34;
 
 function newId(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
@@ -132,11 +138,31 @@ function countQuestions(pages: SurveyPageConfig[] | undefined) {
   return pages?.reduce((count, page) => count + page.questions.length, 0) ?? 0;
 }
 
+function drawWrappedText(context: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number) {
+  let line = "";
+  let currentY = y;
+
+  for (const character of text) {
+    const nextLine = `${line}${character}`;
+    if (line && context.measureText(nextLine).width > maxWidth) {
+      context.fillText(line, x, currentY);
+      line = character;
+      currentY += lineHeight;
+    } else {
+      line = nextLine;
+    }
+  }
+
+  if (line) context.fillText(line.trim(), x, currentY);
+}
+
 export function AdminPage() {
   const [authStatus, setAuthStatus] = useState<"checking" | "login" | "authenticated">("checking");
+  const [adminTab, setAdminTab] = useState<AdminTab>("settings");
   const [password, setPassword] = useState("");
   const [survey, setSurvey] = useState<PagedSurvey | null>(null);
   const [selectedPageId, setSelectedPageId] = useState("");
+  const [qrDataUrl, setQrDataUrl] = useState("");
   const [previewRatings, setPreviewRatings] = useState<Record<string, number | null>>({});
   const [stats, setStats] = useState<Stats>({ totalResponses: 0, postalCodeCount: 0 });
   const [palettePreview, setPalettePreview] = useState<PaletteColor[] | undefined>();
@@ -166,6 +192,11 @@ export function AdminPage() {
     [selectedPageId, survey]
   );
 
+  const surveyUrl = useMemo(() => {
+    const baseUrl = `${window.location.origin}${window.location.pathname}`;
+    return `${baseUrl}#survey`;
+  }, []);
+
   useEffect(() => {
     if (!survey) return;
     const paletteId = survey.map_palette ?? DEFAULT_MAP_PALETTE;
@@ -178,6 +209,30 @@ export function AdminPage() {
       .then((text) => setPalettePreview(parsePaletteText(text)))
       .catch((error) => console.error(error));
   }, [survey?.map_palette]);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated" || !survey || !surveyUrl) return;
+    let cancelled = false;
+    setQrDataUrl("");
+    QRCode.toDataURL(surveyUrl, {
+      color: {
+        dark: "#172033",
+        light: "#ffffff"
+      },
+      margin: 2,
+      width: QR_SIZE
+    })
+      .then((dataUrl) => {
+        if (!cancelled) setQrDataUrl(dataUrl);
+      })
+      .catch((error) => {
+        console.error("[Survey Admin] QR generation failed", error);
+        if (!cancelled) setStatus("Could not generate the survey QR code.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authStatus, survey, surveyUrl]);
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -272,6 +327,7 @@ export function AdminPage() {
       await apiPost<AdminSession>("/api/admin/logout", {});
       setSurvey(null);
       setSelectedPageId("");
+      setAdminTab("settings");
       setStats({ totalResponses: 0, postalCodeCount: 0 });
       setAuthStatus("login");
     } catch (error) {
@@ -303,6 +359,60 @@ export function AdminPage() {
 
   function exportNewsletterCsv() {
     window.open("/api/admin/newsletter.csv", "_blank");
+  }
+
+  async function copySurveyLink() {
+    setStatus("");
+    try {
+      await navigator.clipboard.writeText(surveyUrl);
+      setStatus("Survey link copied.");
+    } catch (error) {
+      console.error("[Survey Admin] Copy failed", error);
+      setStatus("Could not copy the survey link.");
+    }
+  }
+
+  async function downloadQrCard() {
+    if (!survey) return;
+
+    setStatus("");
+    try {
+      const qrCanvas = document.createElement("canvas");
+      await QRCode.toCanvas(qrCanvas, surveyUrl, {
+        color: {
+          dark: "#172033",
+          light: "#ffffff"
+        },
+        margin: 2,
+        width: QR_SIZE
+      });
+
+      const canvas = document.createElement("canvas");
+      const textLines = Math.max(1, Math.ceil(surveyUrl.length / 48));
+      canvas.width = QR_CARD_WIDTH;
+      canvas.height = QR_CARD_PADDING + QR_SIZE + 26 + textLines * 22 + QR_CARD_PADDING;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Canvas rendering is not available.");
+
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = "#172033";
+      context.font = "700 22px Inter, Arial, sans-serif";
+      context.textAlign = "center";
+      context.fillText(survey.title || "Survey", canvas.width / 2, QR_CARD_PADDING);
+      context.drawImage(qrCanvas, (canvas.width - QR_SIZE) / 2, QR_CARD_PADDING + 18, QR_SIZE, QR_SIZE);
+      context.font = "600 18px Inter, Arial, sans-serif";
+      drawWrappedText(context, surveyUrl, canvas.width / 2, QR_CARD_PADDING + QR_SIZE + 60, canvas.width - QR_CARD_PADDING * 2, 22);
+
+      const link = document.createElement("a");
+      link.href = canvas.toDataURL("image/png");
+      link.download = `survey-qr-card-${survey.id || "active"}.png`;
+      link.click();
+      setStatus("QR card downloaded.");
+    } catch (error) {
+      console.error("[Survey Admin] QR card download failed", error);
+      setStatus("Could not download the QR card.");
+    }
   }
 
   async function clearResults() {
@@ -463,6 +573,18 @@ export function AdminPage() {
     <section className="panel admin-panel">
       <p className="eyebrow">Admin</p>
       <h1>Survey settings</h1>
+      <div className="admin-tabs" aria-label="Admin sections">
+        <button type="button" className={adminTab === "settings" ? "active" : ""} onClick={() => setAdminTab("settings")}>
+          Settings
+        </button>
+        <button type="button" className={adminTab === "share" ? "active" : ""} onClick={() => setAdminTab("share")}>
+          Share
+        </button>
+        <button type="button" className={adminTab === "data" ? "active" : ""} onClick={() => setAdminTab("data")}>
+          Data
+        </button>
+      </div>
+      {adminTab === "settings" ? (
       <form onSubmit={save} className="admin-grid">
         <label className="field">
           <span>Title</span>
@@ -734,35 +856,60 @@ export function AdminPage() {
         </div>
 
         <button className="primary" type="submit">Save survey</button>
-        <button type="button" onClick={exportCsv}>Export CSV</button>
-        <button type="button" onClick={exportNewsletterCsv}>Export newsletter CSV</button>
         <button type="button" onClick={logout} disabled={isWorking}>Log out</button>
       </form>
-      <div className="admin-tools" aria-label="Database tools">
-        <h2>Database tools</h2>
-        <label className="field">
-          <span>Random responses</span>
-          <input
-            type="number"
-            min="1"
-            max="10000"
-            value={randomCount}
-            onChange={(event) => setRandomCount(Number(event.target.value))}
-          />
-        </label>
-        <div className="admin-actions">
-          <button type="button" onClick={fillRandomData} disabled={isWorking || randomCount < 1 || randomCount > 10000}>
-            Fill with random data
-          </button>
-          <button className="danger" type="button" onClick={clearResults} disabled={isWorking}>
-            Clear responses
-          </button>
+      ) : null}
+      {adminTab === "share" ? (
+        <div className="share-panel">
+          <div className="qr-preview" aria-label="Survey QR code">
+            {qrDataUrl ? (
+              <img src={qrDataUrl} alt="Survey QR code" />
+            ) : (
+              <div className="qr-preview__empty">Generating QR code...</div>
+            )}
+          </div>
+          <p className="share-url">{surveyUrl}</p>
+          <div className="admin-actions">
+            <button type="button" onClick={copySurveyLink}>Copy link</button>
+            <button className="primary" type="button" onClick={downloadQrCard} disabled={!qrDataUrl}>
+              Download QR card
+            </button>
+          </div>
         </div>
-      </div>
-      <div className="stats">
-        <span>{stats.totalResponses} responses</span>
-        <span>{stats.postalCodeCount} PLZ areas</span>
-      </div>
+      ) : null}
+      {adminTab === "data" ? (
+        <div className="data-panel">
+          <div className="admin-actions">
+            <button type="button" onClick={exportCsv}>Export CSV</button>
+            <button type="button" onClick={exportNewsletterCsv}>Export newsletter CSV</button>
+          </div>
+          <div className="admin-tools" aria-label="Database tools">
+            <h2>Database tools</h2>
+            <label className="field">
+              <span>Random responses</span>
+              <input
+                type="number"
+                min="1"
+                max="10000"
+                value={randomCount}
+                onChange={(event) => setRandomCount(Number(event.target.value))}
+              />
+            </label>
+            <div className="admin-actions">
+              <button type="button" onClick={fillRandomData} disabled={isWorking || randomCount < 1 || randomCount > 10000}>
+                Fill with random data
+              </button>
+              <button className="danger" type="button" onClick={clearResults} disabled={isWorking}>
+                Clear responses
+              </button>
+            </div>
+          </div>
+          <div className="stats">
+            <span>{stats.totalResponses} responses</span>
+            <span>{stats.postalCodeCount} PLZ areas</span>
+          </div>
+        </div>
+      ) : null}
       {status ? <p role="status">{status}</p> : null}
     </section>
   );

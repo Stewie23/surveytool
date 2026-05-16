@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import QRCode from "qrcode";
 import { RatingScale } from "../src/client/src/components/RatingScale";
 import { AdminPage } from "../src/client/src/pages/AdminPage";
 import { MapPage } from "../src/client/src/pages/MapPage";
@@ -12,6 +13,13 @@ vi.mock("../src/client/src/components/GermanyPlzMap", () => ({
   GermanyPlzMap: ({ aggregates }: { aggregates: Array<{ count: number }> }) => (
     <div data-testid="mock-map">{aggregates.reduce((sum, item) => sum + item.count, 0)}</div>
   )
+}));
+
+vi.mock("qrcode", () => ({
+  default: {
+    toCanvas: vi.fn(async () => undefined),
+    toDataURL: vi.fn(async () => "data:image/png;base64,cXI=")
+  }
 }));
 
 afterEach(() => {
@@ -386,6 +394,9 @@ describe("frontend survey controls", () => {
 
     render(<AdminPage />);
     expect(await screen.findByText("Survey settings")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Settings" })).toHaveClass("active");
+    expect(screen.getByRole("button", { name: "Share" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Data" })).toBeInTheDocument();
     expect(screen.getByLabelText("LOD 5")).toBeChecked();
     expect(screen.getByLabelText("LOD 5")).toBeDisabled();
     expect(screen.getByLabelText("LOD 4")).not.toBeChecked();
@@ -428,6 +439,7 @@ describe("frontend survey controls", () => {
       ]
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "Data" }));
     fireEvent.change(screen.getByLabelText(/random responses/i), { target: { value: "12" } });
     fireEvent.click(screen.getByRole("button", { name: /fill with random data/i }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Added 12 random responses."));
@@ -455,6 +467,72 @@ describe("frontend survey controls", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /export newsletter csv/i }));
     expect(open).toHaveBeenCalledWith("/api/admin/newsletter.csv", "_blank");
+  });
+
+  it("shows and exports a QR share card from the admin share tab", async () => {
+    const expectedUrl = `${window.location.origin}${window.location.pathname}#survey`;
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const context = {
+      drawImage: vi.fn(),
+      fillRect: vi.fn(),
+      fillText: vi.fn(),
+      measureText: vi.fn((text: string) => ({ width: text.length * 8 }))
+    } as unknown as CanvasRenderingContext2D;
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context);
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/png;base64,Y2FyZA==");
+    const click = vi.spyOn(HTMLElement.prototype, "click").mockImplementation(() => undefined);
+    const realCreateElement = document.createElement.bind(document);
+    const anchors: HTMLAnchorElement[] = [];
+    vi.spyOn(document, "createElement").mockImplementation(((tagName: string, options?: ElementCreationOptions) => {
+      const element = realCreateElement(tagName, options);
+      if (tagName.toLowerCase() === "a") anchors.push(element as HTMLAnchorElement);
+      return element;
+    }) as typeof document.createElement);
+    const fetchMock = adminFetchMock([
+      jsonResponse({ authenticated: true }),
+      jsonResponse({
+          id: "default",
+          title: "Test",
+          question_text: "Rate it",
+          min_rating: -3,
+          max_rating: 3,
+          rating_labels: {},
+          pages: [{
+            id: "page-1",
+            title: "Page 1",
+            questions: [{ id: "q-1", text: "Rate it", min_rating: -3, max_rating: 3, rating_labels: {} }]
+          }],
+          terms_enabled: false,
+          terms_text: "",
+          map_palette: "batlow",
+          map_lod_levels: [5],
+          is_active: true
+      }),
+      jsonResponse({ totalResponses: 0, postalCodeCount: 0 })
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AdminPage />);
+    expect(await screen.findByText("Survey settings")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+
+    expect(screen.getByText(expectedUrl)).toBeInTheDocument();
+    expect(await screen.findByAltText("Survey QR code")).toHaveAttribute("src", "data:image/png;base64,cXI=");
+    expect(QRCode.toDataURL).toHaveBeenCalledWith(expectedUrl, expect.objectContaining({ width: 320 }));
+
+    fireEvent.click(screen.getByRole("button", { name: /copy link/i }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(expectedUrl));
+    expect(screen.getByRole("status")).toHaveTextContent("Survey link copied.");
+
+    fireEvent.click(screen.getByRole("button", { name: /download qr card/i }));
+    await waitFor(() => expect(QRCode.toCanvas).toHaveBeenCalledWith(expect.any(HTMLCanvasElement), expectedUrl, expect.objectContaining({ width: 320 })));
+    expect(anchors[0]?.download).toBe("survey-qr-card-default.png");
+    expect(anchors[0]?.href).toBe("data:image/png;base64,Y2FyZA==");
+    expect(click).toHaveBeenCalled();
   });
 
   it("saves an added admin question without requiring another editor action", async () => {
