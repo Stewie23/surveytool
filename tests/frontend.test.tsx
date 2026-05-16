@@ -471,15 +471,17 @@ describe("frontend survey controls", () => {
 
   it("shows and exports a QR share card from the admin share tab", async () => {
     const expectedUrl = `${window.location.origin}${window.location.pathname}#survey`;
+    const longTitle = "Beteiligung zur Wasserverfügbarkeit und Umgang mit Wasser im Quartier";
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText }
     });
+    const fillText = vi.fn();
     const context = {
       drawImage: vi.fn(),
       fillRect: vi.fn(),
-      fillText: vi.fn(),
+      fillText,
       measureText: vi.fn((text: string) => ({ width: text.length * 8 }))
     } as unknown as CanvasRenderingContext2D;
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context);
@@ -496,7 +498,7 @@ describe("frontend survey controls", () => {
       jsonResponse({ authenticated: true }),
       jsonResponse({
           id: "default",
-          title: "Test",
+          title: longTitle,
           question_text: "Rate it",
           min_rating: -3,
           max_rating: 3,
@@ -530,6 +532,7 @@ describe("frontend survey controls", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /download qr card/i }));
     await waitFor(() => expect(QRCode.toCanvas).toHaveBeenCalledWith(expect.any(HTMLCanvasElement), expectedUrl, expect.objectContaining({ width: 320 })));
+    expect(fillText).not.toHaveBeenCalledWith(longTitle, expect.any(Number), expect.any(Number));
     expect(anchors[0]?.download).toBe("survey-qr-card-default.png");
     expect(anchors[0]?.href).toBe("data:image/png;base64,Y2FyZA==");
     expect(click).toHaveBeenCalled();

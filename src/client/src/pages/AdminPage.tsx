@@ -138,22 +138,28 @@ function countQuestions(pages: SurveyPageConfig[] | undefined) {
   return pages?.reduce((count, page) => count + page.questions.length, 0) ?? 0;
 }
 
-function drawWrappedText(context: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number) {
+function wrappedTextLines(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const lines: string[] = [];
   let line = "";
-  let currentY = y;
 
   for (const character of text) {
     const nextLine = `${line}${character}`;
     if (line && context.measureText(nextLine).width > maxWidth) {
-      context.fillText(line, x, currentY);
+      lines.push(line);
       line = character;
-      currentY += lineHeight;
     } else {
       line = nextLine;
     }
   }
 
-  if (line) context.fillText(line.trim(), x, currentY);
+  if (line) lines.push(line);
+  return lines.length > 0 ? lines : [""];
+}
+
+function drawWrappedText(context: CanvasRenderingContext2D, lines: string[], x: number, y: number, lineHeight: number) {
+  lines.forEach((line, index) => {
+    context.fillText(line, x, y + index * lineHeight);
+  });
 }
 
 export function AdminPage() {
@@ -388,21 +394,31 @@ export function AdminPage() {
       });
 
       const canvas = document.createElement("canvas");
-      const textLines = Math.max(1, Math.ceil(surveyUrl.length / 48));
       canvas.width = QR_CARD_WIDTH;
-      canvas.height = QR_CARD_PADDING + QR_SIZE + 26 + textLines * 22 + QR_CARD_PADDING;
       const context = canvas.getContext("2d");
       if (!context) throw new Error("Canvas rendering is not available.");
+
+      const contentWidth = canvas.width - QR_CARD_PADDING * 2;
+      const titleLineHeight = 27;
+      const urlLineHeight = 22;
+      context.font = "700 22px Inter, Arial, sans-serif";
+      const titleLines = wrappedTextLines(context, survey.title || "Survey", contentWidth);
+      context.font = "600 18px Inter, Arial, sans-serif";
+      const urlLines = wrappedTextLines(context, surveyUrl, contentWidth);
+      const titleBlockHeight = titleLines.length * titleLineHeight;
+      canvas.height = QR_CARD_PADDING + titleBlockHeight + 18 + QR_SIZE + 26 + urlLines.length * urlLineHeight + QR_CARD_PADDING;
 
       context.fillStyle = "#ffffff";
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.fillStyle = "#172033";
       context.font = "700 22px Inter, Arial, sans-serif";
       context.textAlign = "center";
-      context.fillText(survey.title || "Survey", canvas.width / 2, QR_CARD_PADDING);
-      context.drawImage(qrCanvas, (canvas.width - QR_SIZE) / 2, QR_CARD_PADDING + 18, QR_SIZE, QR_SIZE);
+      context.textBaseline = "top";
+      drawWrappedText(context, titleLines, canvas.width / 2, QR_CARD_PADDING, titleLineHeight);
+      const qrTop = QR_CARD_PADDING + titleBlockHeight + 18;
+      context.drawImage(qrCanvas, (canvas.width - QR_SIZE) / 2, qrTop, QR_SIZE, QR_SIZE);
       context.font = "600 18px Inter, Arial, sans-serif";
-      drawWrappedText(context, surveyUrl, canvas.width / 2, QR_CARD_PADDING + QR_SIZE + 60, canvas.width - QR_CARD_PADDING * 2, 22);
+      drawWrappedText(context, urlLines, canvas.width / 2, qrTop + QR_SIZE + 26, urlLineHeight);
 
       const link = document.createElement("a");
       link.href = canvas.toDataURL("image/png");
