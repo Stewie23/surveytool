@@ -10,6 +10,7 @@
 
 body {
   margin: 0;
+  min-width: 320px;
 }
 
 button,
@@ -147,6 +148,20 @@ textarea {
   min-height: 38px;
   padding: 8px 10px;
   width: 100%;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #172033;
+  box-shadow: 0 0 0 3px rgb(23 32 51 / 12%);
+  outline: none;
+}
+
+input[aria-invalid="true"],
+select[aria-invalid="true"],
+textarea[aria-invalid="true"] {
+  border-color: #b91c1c;
 }
 
 textarea {
@@ -658,21 +673,77 @@ textarea {
 .legend .hidden { background: #9ca3af; }
 
 @media (max-width: 720px) {
+  body {
+    overflow-x: hidden;
+  }
+
   .top-nav {
     align-items: center;
-    padding: 6px 10px;
+    gap: 8px;
+    min-height: 54px;
+    padding: 8px 10px;
   }
 
   .top-nav strong {
-    max-width: 84px;
+    color: #172033;
+    flex: 0 1 104px;
+    font-size: 0.92rem;
+    line-height: 1.1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .top-nav div {
+    display: grid;
     flex: 1;
-    justify-content: end;
+    gap: 5px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    justify-content: stretch;
+    min-width: 0;
+  }
+
+  .top-nav button {
+    border-radius: 999px;
+    font-size: 0.74rem;
+    min-height: 34px;
+    overflow: hidden;
+    padding: 0 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .panel {
+    margin: 18px auto;
+    padding: 0 12px;
+  }
+
+  .survey-panel {
+    border-radius: 0;
+    border-width: 0;
+    margin: 0 auto;
+    max-width: 560px;
+    min-height: calc(100vh - 54px);
+    padding: 20px 16px calc(106px + env(safe-area-inset-bottom));
+    width: 100%;
+  }
+
+  .survey-panel > .eyebrow {
+    font-size: 0.76rem;
+    margin-bottom: 7px;
+  }
+
+  .survey-panel > h1 {
+    font-size: clamp(1.35rem, 6.4vw, 1.65rem);
+    line-height: 1.16;
+    margin-bottom: 14px;
+    overflow-wrap: anywhere;
+  }
+
+  .survey-panel > .notice,
+  .survey-panel > .error,
+  .survey-panel > .success {
+    margin: 0 0 18px;
   }
 
   .admin-grid {
@@ -683,7 +754,6 @@ textarea {
   .question-editor__header,
   .question-editor__range,
   .start-editor__grid,
-  .survey-actions,
   .map-controls {
     align-items: stretch;
     grid-template-columns: 1fr;
@@ -691,9 +761,133 @@ textarea {
 
   .page-editor__header,
   .question-editor__header,
-  .survey-actions,
   .map-controls {
     display: grid;
+  }
+
+  .survey-panel .survey-form {
+    border-radius: 10px;
+    gap: 14px;
+    margin-top: 14px;
+    padding: 18px 20px;
+  }
+
+  .survey-progress {
+    align-items: start;
+    display: grid;
+    gap: 4px;
+  }
+
+  .survey-progress span {
+    color: #64748b;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .survey-progress strong {
+    font-size: 0.92rem;
+    line-height: 1.2;
+  }
+
+  .question-block {
+    gap: 10px;
+  }
+
+  .question-block legend {
+    color: #334155;
+    font-size: 0.98rem;
+    font-weight: 600;
+    line-height: 1.36;
+  }
+
+  .rating-scale {
+    display: grid;
+    gap: 8px;
+  }
+
+  .rating-scale button {
+    align-items: center;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: minmax(44px, auto) minmax(0, 1fr);
+    justify-items: start;
+    min-height: 58px;
+    padding: 0 16px;
+    text-align: left;
+    width: 100%;
+  }
+
+  .rating-scale__value {
+    font-size: 1.45rem;
+    line-height: 1;
+  }
+
+  .rating-scale__label {
+    font-size: 0.95rem;
+    line-height: 1.2;
+    max-width: none;
+    overflow-wrap: anywhere;
+    text-align: right;
+    width: 100%;
+  }
+
+  .field {
+    gap: 8px;
+  }
+
+  .field span,
+  .check {
+    font-size: 0.88rem;
+  }
+
+  .survey-panel .field input {
+    font-size: 1.15rem;
+    min-height: 52px;
+    padding: 11px 12px;
+  }
+
+  .field__hint,
+  .field__error {
+    font-size: 0.84rem;
+  }
+
+  .terms-box {
+    max-height: 48vh;
+  }
+
+  .survey-actions {
+    align-items: stretch;
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .survey-actions button {
+    flex: 1 1 140px;
+    min-height: 48px;
+  }
+
+  .survey-actions--sticky {
+    background: rgb(238 242 247 / 92%);
+    border-top: 1px solid rgb(203 213 225 / 78%);
+    bottom: 0;
+    box-shadow: 0 -12px 30px rgb(23 32 51 / 10%);
+    display: flex;
+    gap: 10px;
+    left: 0;
+    padding: 12px max(16px, env(safe-area-inset-left)) calc(12px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-right));
+    position: fixed;
+    right: 0;
+    z-index: 20;
+  }
+
+  .survey-actions--sticky button {
+    border-radius: 8px;
+    min-height: 54px;
+  }
+
+  .survey-actions--sticky .primary {
+    flex-grow: 1.7;
   }
 
   .map-page {

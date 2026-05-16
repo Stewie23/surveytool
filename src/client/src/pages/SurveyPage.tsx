@@ -197,13 +197,10 @@ export function SurveyPage() {
     return <section className="panel">Loading survey...</section>;
   }
 
-  const alreadySubmitted = localStorage.getItem(`submitted:${survey.id}`) === "true";
-
   return (
     <section className="panel survey-panel">
       <p className="eyebrow">Active survey</p>
       <h1>{survey.title}</h1>
-      {alreadySubmitted ? <p className="notice">This browser already submitted for this survey.</p> : null}
 
       {showCompletionPage ? (
         <div className="survey-form completion-page">
@@ -245,7 +242,7 @@ export function SurveyPage() {
             <img className="start-page__logo" src={survey.start_logo_data_url} alt="Cluster logo" />
           ) : null}
           <MarkdownText text={survey.start_text ?? ""} />
-          <div className="survey-actions">
+          <div className="survey-actions survey-actions--sticky">
             <button className="primary" type="button" onClick={() => setPageIndex(1)}>Start survey</button>
           </div>
         </div>
@@ -259,7 +256,7 @@ export function SurveyPage() {
             <input type="checkbox" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} />
             I accept the terms
           </label>
-          <div className="survey-actions">
+          <div className="survey-actions survey-actions--sticky">
             <button type="button" onClick={() => setPageIndex(survey.pages.length - 1 + startOffset)}>Back</button>
             <button className="primary" type="submit" disabled={loading || !acceptedTerms}>
               {loading ? "Submitting..." : "Submit response"}
@@ -286,7 +283,7 @@ export function SurveyPage() {
             </fieldset>
           ))}
           {questionPageIndex === 0 ? <PostalCodeInput value={postalCode} onChange={setPostalCode} /> : null}
-          <div className="survey-actions">
+          <div className="survey-actions survey-actions--sticky">
             <button type="button" onClick={() => setPageIndex(Math.max(0, pageIndex - 1))} disabled={pageIndex === 0 || loading}>
               Back
             </button>
